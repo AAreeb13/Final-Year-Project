@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, SecretStr
 
+from src.tools.python_code_execution.tool import run_python_code_tool
 
 def import_settings():
     from src.settings import settings
@@ -38,7 +39,7 @@ if __name__ == "__main__":
         base_url="https://openrouter.ai/api/v1",
         model="gpt-4o-mini",
         temperature=0.1,
-        max_completion_tokens=5000)
+        max_completion_tokens=100000)
     
     
     
@@ -51,7 +52,7 @@ if __name__ == "__main__":
         "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters."
         "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n"
         "4. Provide a clear project folder structure\n"
-        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised"),
+        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty"),
         response_format=SingleAgentModelOutput
     )
     # print("here")
