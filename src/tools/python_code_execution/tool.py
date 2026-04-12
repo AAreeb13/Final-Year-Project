@@ -30,11 +30,12 @@ def run_python_code_tool(
     if argv is None:
         argv = []
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
-        temp_file.write(file_content.encode())
-        temp_file_path = temp_file.name
-    
+    temp_file_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
+            temp_file.write(file_content.encode())
+            temp_file_path = temp_file.name
+
         result = subprocess.run(
             [sys.executable, temp_file_path, *argv],
             capture_output=True,
@@ -52,7 +53,8 @@ def run_python_code_tool(
 
         return result.stdout
     finally:
-        os.remove(temp_file_path)
+        if temp_file_path is not None and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         
 
 if __name__ == "__main__":
