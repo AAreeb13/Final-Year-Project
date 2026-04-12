@@ -55,7 +55,7 @@ def run_python_code_tool(
     finally:
         if temp_file_path is not None and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
-        
+
 
 if __name__ == "__main__":
     # Example usage

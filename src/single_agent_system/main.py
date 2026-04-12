@@ -46,7 +46,7 @@ if __name__ == "__main__":
     agent = create_agent(
         model=model,
         system_prompt=("You are multi-purpose agent that aims to follow Software Development LifeCycle. You must perform the following tasks in order\n" + 
-        "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem\n. Do not include any requirements that were not explicitly suggested." 
+        "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem.\nDo not include any requirements that were not explicitly suggested."
         "\n  Incorrect Example: Input=\"Iris Detector\" Functional Requirement: \"Authentication, user registration\"\n" +
         "2. Perform Top-Down Decomposition to highlight high-level components and relationships between components\n" +
         "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters.\n"
