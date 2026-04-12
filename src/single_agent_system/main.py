@@ -49,7 +49,7 @@ if __name__ == "__main__":
         "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem\n. Do not include any requirements that were not explicitly suggested." 
         "\n  Incorrect Example: Input=\"Iris Detector\" Functional Requirement: \"Authentication, user registration\"\n" +
         "2. Perform Top-Down Decomposition to highlight high-level components and relationships between components\n" +
-        "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters."
+        "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters.\n"
         "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n"
         "4. Provide a clear project folder structure\n"
         "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty\n"
