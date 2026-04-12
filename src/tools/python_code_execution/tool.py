@@ -1,39 +1,45 @@
 """
-    This is an agent tool that runs python code. It takes in the whole content of the python file and the parameters to run the code with. We will temporarily create a file with the content of the python code and then run the file with the parameters as input. The output of the code will be returned as a string. The file will be deleted after running the code. 
-    
-    It is important that the file has a __main__ function that takes in the parameters as input and runs the code. The tool will run the code and return the output of the code. 
+This is an agent tool that runs python code from temporary files.
+It accepts the whole file content, optional CLI args, and a timeout.
 """
 from langchain.tools import tool
-import json
 import os
 import subprocess
 import sys
 import tempfile
+from typing import List
 
 
 @tool
-def run_python_code_tool(filecontents: str, parameters: dict) -> str:
+def run_python_code_tool(
+    file_content: str,
+    argv: List[str] | None = None,
+    timeout_s: int = 10,
+) -> str:
     """
-    Runs the given python code with the given parameters and returns the output as a string. The filecontents should be the whole content of the python file. The parameters should be a dictionary of parameter names and values. The file will be created, run and deleted in a temporary directory. The output of the code will be returned as a string.
-    
+    Runs the given python code and returns stdout as a string.
+
     Args:
-        filecontents (str): The whole content of the python file to be run.
-        parameters (dict): A dictionary of parameter names and values to be passed to the code.
-    
+        file_content (str): The whole content of the python file to be run.
+        argv (List[str] | None): Optional CLI arguments for the script.
+        timeout_s (int): Maximum execution time in seconds.
+
     Returns:
         str: The output of the code as a string.
     """
+    if argv is None:
+        argv = []
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
-        temp_file.write(filecontents.encode())
+        temp_file.write(file_content.encode())
         temp_file_path = temp_file.name
     
     try:
-        # Run the python file with JSON-encoded parameters as stdin.
         result = subprocess.run(
-            [sys.executable, temp_file_path],
+            [sys.executable, temp_file_path, *argv],
             capture_output=True,
             text=True,
-            input=json.dumps(parameters),
+            timeout=timeout_s,
             check=False,
         )
 
@@ -51,15 +57,13 @@ def run_python_code_tool(filecontents: str, parameters: dict) -> str:
 
 if __name__ == "__main__":
     # Example usage
-    filecontents = (
-    "def main(params):\n" +
-    "    name = params.get(\"name\", \"World\")\n" +
+    file_content = (
+    "import sys\n" +
+    "def main(args):\n" +
+    "    name = args[0] if args else \"World\"\n" +
     "    return f\"Hello, {name}!\"\n" +
     "if __name__ == \"__main__\":\n" +
-    "    import sys\n" +
-    "    import json\n" +
-    "    params = json.loads(sys.stdin.read())\n" +
-    "    print(main(params))"
+    "    print(main(sys.argv[1:]))"
     )
-    output = run_python_code_tool.invoke({"filecontents": filecontents, "parameters": {"name": "Areeb"}})
+    output = run_python_code_tool.invoke({"file_content": file_content, "argv": ["Areeb"], "timeout_s": 10})
     print(output)

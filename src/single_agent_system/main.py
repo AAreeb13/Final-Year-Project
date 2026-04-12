@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, SecretStr
 
-# from src.tools.python_code_execution.tool import run_python_code_tool
+from src.tools.python_code_execution.tool import run_python_code_tool
 
 def import_settings():
     from src.settings import settings
@@ -52,7 +52,10 @@ if __name__ == "__main__":
         "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters."
         "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n"
         "4. Provide a clear project folder structure\n"
-        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty"),
+        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty\n"
+        "Tool contract for run_python_code_tool: pass `file_content` (string), optional `argv` (list of CLI args), and optional `timeout_s` (seconds). Do not use stdin JSON parameters.\n"
+        "Imports are allowed when required by the task."),
+        tools=[run_python_code_tool],
         response_format=SingleAgentModelOutput
     )
     # print("here")
