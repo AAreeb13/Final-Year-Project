@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, SecretStr
 
-# from src.tools.python_code_execution.tool import run_python_code_tool
+from src.tools.python_code_execution.tool import run_python_code_tool
 
 def import_settings():
     from src.settings import settings
@@ -29,6 +29,8 @@ class SingleAgentModelOutput(BaseModel):
     # Code Generation 
     filename_to_code: dict[str, str] = dict()  # filename: code
     
+    files_run_with_output: dict[str, str] = dict()  # filename: output
+    
 if __name__ == "__main__":
     settings = import_settings()
 
@@ -46,17 +48,20 @@ if __name__ == "__main__":
     agent = create_agent(
         model=model,
         system_prompt=("You are multi-purpose agent that aims to follow Software Development LifeCycle. You must perform the following tasks in order\n" + 
-        "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem\n. Do not include any requirements that were not explicitly suggested." 
+        "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem\n. Do not include any requirements that were not explicitly suggested." +
         "\n  Incorrect Example: Input=\"Iris Detector\" Functional Requirement: \"Authentication, user registration\"\n" +
         "2. Perform Top-Down Decomposition to highlight high-level components and relationships between components\n" +
-        "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters."
-        "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n"
-        "4. Provide a clear project folder structure\n"
-        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty"),
-        response_format=SingleAgentModelOutput
+        "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters." + 
+        "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n" + 
+        "4. Provide a clear project folder structure\n" + 
+        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised each file should have __main__ function. Complete all the code and do not leave any sections empty\n" +
+        "6. Code Execution: Run the code that is requires no imports and provide the output of the code. If there are any errors in the code, fix the code and run it again until there are no errors and the code runs successfully. You can use the tool provided to run the code. The tool takes in the whole content of the python file and the parameters to run the code with. The output of the code will be returned as a string. The file will be deleted after running the code.\n")
+        ,
+        response_format=SingleAgentModelOutput,
+        tools=[run_python_code_tool]
     )
     # print("here")
-    response_dict = agent.invoke({"messages": [HumanMessage("snake game using pygame")]})
+    response_dict = agent.invoke({"messages": [HumanMessage("snake game using pygame also make sure that each file has a __main__ function that that runs an example test case. Make sure to run the code and fix any errors until the code runs successfully.")]})
     response: SingleAgentModelOutput = SingleAgentModelOutput.model_validate_json(response_dict["messages"][-1].content)
     # print(response_dict["messages"][-1].content)
     
@@ -81,6 +86,9 @@ if __name__ == "__main__":
     print("\nGenerated Code:")
     for filename, code in response.filename_to_code.items():
         print(f"Filename: {filename}\nCode:\n{code}\n{'-'*40}")
+    print("\nCode Execution Output:") 
+    for filename, output in response.files_run_with_output.items():
+        print(f"Filename: {filename}\nOutput:\n{output}\n{'-'*40}")
     
     # create folder to store response
     current_directory = os.getcwd()

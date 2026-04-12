@@ -3,51 +3,37 @@
     
     It is important that the file has a __main__ function that takes in the parameters as input and runs the code. The tool will run the code and return the output of the code. 
 """
-from langchain.tools import tool
-import json
-import os
+from __future__ import annotations
+
 import subprocess
-import sys
 import tempfile
+from typing import List
+
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 
 
-@tool
-def run_python_code_tool(filecontents: str, parameters: dict) -> str:
-    """
-    Runs the given python code with the given parameters and returns the output as a string. The filecontents should be the whole content of the python file. The parameters should be a dictionary of parameter names and values. The file will be created, run and deleted in a temporary directory. The output of the code will be returned as a string.
-    
-    Args:
-        filecontents (str): The whole content of the python file to be run.
-        parameters (dict): A dictionary of parameter names and values to be passed to the code.
-    
-    Returns:
-        str: The output of the code as a string.
-    """
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
-        temp_file.write(filecontents.encode())
-        temp_file_path = temp_file.name
-    
-    try:
-        # Run the python file with JSON-encoded parameters as stdin.
-        result = subprocess.run(
-            [sys.executable, temp_file_path],
+class RunPythonCodeInput(BaseModel):
+    file_content: str = Field(..., description="Full contents of the Python file to execute.")
+    argv: List[str] = Field(default_factory=list, description="Command-line args passed to the script.")
+    timeout_s: int = Field(10, ge=1, le=120, description="Timeout in seconds.")
+
+
+@tool("run_python_code_tool", args_schema=RunPythonCodeInput)
+def run_python_code_tool(file_content: str, argv: List[str] = [], timeout_s: int = 10) -> str:
+    """Write `file_content` to a temp .py file, run it, and return combined stdout/stderr."""
+    with tempfile.TemporaryDirectory() as td:
+        path = f"{td}/_tmp_run.py"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(file_content)
+
+        proc = subprocess.run(
+            ["python", path, *argv],
             capture_output=True,
             text=True,
-            input=json.dumps(parameters),
-            check=False,
+            timeout=timeout_s,
         )
-
-        if result.returncode != 0:
-            return (
-                f"Execution failed with exit code {result.returncode}.\n"
-                f"STDERR:\n{result.stderr.strip()}\n"
-                f"STDOUT:\n{result.stdout.strip()}"
-            )
-
-        return result.stdout
-    finally:
-        os.remove(temp_file_path)
-        
+        return (proc.stdout or "") + (proc.stderr or "")
 
 if __name__ == "__main__":
     # Example usage
