@@ -2,6 +2,8 @@
 This is an agent tool that runs python code from temporary files.
 It accepts the whole file content, optional CLI args, and a timeout.
 """
+import sys
+
 from langchain_core.tools import tool
 import os
 

@@ -1,8 +1,8 @@
 
+import argparse
 import os
 import time
 from typing import List
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
@@ -13,6 +13,17 @@ from src.tools.python_code_execution.tool import run_python_code_tool
 def import_settings():
     from src.settings import settings
     return settings
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the single-agent SDLC workflow for a given problem statement."
+    )
+    parser.add_argument(
+        "problem_statement",
+        help="Natural-language problem statement for the agent to solve.",
+    )
+    return parser.parse_args()
 
 class SingleAgentModelOutput(BaseModel):
     # Task Decomposition
@@ -30,10 +41,9 @@ class SingleAgentModelOutput(BaseModel):
     filename_to_code: dict[str, str] = dict()  # filename: code
     
     files_run_with_output: dict[str, str] = dict()  # filename: output
-    
-if __name__ == "__main__":
-    settings = import_settings()
 
+
+def build_agent(settings):
     assert settings.OPEN_ROUTER_KEY is not None, "openrouterkey must be set in the .env file"
     print("Settings imported successfully. openrouterkey is set.")
     model = ChatOpenAI(
@@ -60,12 +70,10 @@ if __name__ == "__main__":
         tools=[run_python_code_tool],
         response_format=SingleAgentModelOutput
     )
-    # print("here")
-    response_dict = agent.invoke({"messages": [HumanMessage("snake game using pygame also make sure that each file has a __main__ function that that runs an example test case. Make sure to run the code and fix any errors until the code runs successfully.")]})
-    response: SingleAgentModelOutput = SingleAgentModelOutput.model_validate_json(response_dict["messages"][-1].content)
-    # print(response_dict["messages"][-1].content)
-    
-    # display response in a readable format
+    return agent
+
+
+def display_response(response: SingleAgentModelOutput) -> None:
     print("Functional Requirements:")
     for req in response.functional_requirements:
         print(f"- {req}")
@@ -89,19 +97,32 @@ if __name__ == "__main__":
     print("\nCode Execution Output:") 
     for filename, output in response.files_run_with_output.items():
         print(f"Filename: {filename}\nOutput:\n{output}\n{'-'*40}")
-    
-    # create folder to store response
+
+
+def save_response(response_json: str) -> None:
     current_directory = os.getcwd()
     response_directory = os.path.join(current_directory, ".response")
     os.makedirs(response_directory, exist_ok=True)
-    # save response to a text file
     cur_time = int(time.time())
-    # convert cur_time to hexadecimal
     cur = hex(cur_time)[2:]
     with open(os.path.join(response_directory, f"response{cur}.json"), "w") as f:      
         print("Saving response to file at location:", os.path.join(response_directory, f"response{cur}.json"))  
-        f.write(response_dict["messages"][-1].content)
-        
+        f.write(response_json)
 
+
+def run(problem_statement: str) -> SingleAgentModelOutput:
+    settings = import_settings()
+    agent = build_agent(settings)
+    response_dict = agent.invoke({"messages": [HumanMessage(problem_statement)]})
+    response_json = response_dict["messages"][-1].content
+    response = SingleAgentModelOutput.model_validate_json(response_json)
+    display_response(response)
+    save_response(response_json)
+    return response
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    run(args.problem_statement)
         
  
