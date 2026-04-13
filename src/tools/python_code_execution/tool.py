@@ -1,9 +1,9 @@
 """
-    This is an agent tool that runs python code. It takes in the whole content of the python file and the parameters to run the code with. We will temporarily create a file with the content of the python code and then run the file with the parameters as input. The output of the code will be returned as a string. The file will be deleted after running the code. 
-    
-    It is important that the file has a __main__ function that takes in the parameters as input and runs the code. The tool will run the code and return the output of the code. 
+This is an agent tool that runs python code from temporary files.
+It accepts the whole file content, optional CLI args, and a timeout.
 """
-from __future__ import annotations
+from langchain_core.tools import tool
+import os
 
 import subprocess
 import tempfile
@@ -12,40 +12,62 @@ from typing import List
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+@tool
+def run_python_code_tool(
+    file_content: str,
+    argv: List[str] | None = None,
+    timeout_s: int = 10,
+) -> str:
+    """
+    Runs the given python code and returns stdout as a string.
 
-class RunPythonCodeInput(BaseModel):
-    file_content: str = Field(..., description="Full contents of the Python file to execute.")
-    argv: List[str] = Field(default_factory=list, description="Command-line args passed to the script.")
-    timeout_s: int = Field(10, ge=1, le=120, description="Timeout in seconds.")
+    Args:
+        file_content (str): The whole content of the python file to be run.
+        argv (List[str] | None): Optional CLI arguments for the script.
+        timeout_s (int): Maximum execution time in seconds.
 
+    Returns:
+        str: The output of the code as a string.
+    """
+    if argv is None:
+        argv = []
 
-@tool("run_python_code_tool", args_schema=RunPythonCodeInput)
-def run_python_code_tool(file_content: str, argv: List[str] = [], timeout_s: int = 10) -> str:
-    """Write `file_content` to a temp .py file, run it, and return combined stdout/stderr."""
-    with tempfile.TemporaryDirectory() as td:
-        path = f"{td}/_tmp_run.py"
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(file_content)
+    temp_file_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
+            temp_file.write(file_content.encode())
+            temp_file_path = temp_file.name
 
-        proc = subprocess.run(
-            ["python", path, *argv],
+        result = subprocess.run(
+            [sys.executable, temp_file_path, *argv],
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            check=False,
         )
-        return (proc.stdout or "") + (proc.stderr or "")
+
+        if result.returncode != 0:
+            return (
+                f"Execution failed with exit code {result.returncode}.\n"
+                f"STDERR:\n{result.stderr.strip()}\n"
+                f"STDOUT:\n{result.stdout.strip()}"
+            )
+
+        return result.stdout
+    finally:
+        if temp_file_path is not None and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
 
 if __name__ == "__main__":
     # Example usage
-    filecontents = (
-    "def main(params):\n" +
-    "    name = params.get(\"name\", \"World\")\n" +
+    file_content = (
+    "import sys\n" +
+    "def main(args):\n" +
+    "    name = args[0] if args else \"World\"\n" +
     "    return f\"Hello, {name}!\"\n" +
     "if __name__ == \"__main__\":\n" +
-    "    import sys\n" +
-    "    import json\n" +
-    "    params = json.loads(sys.stdin.read())\n" +
-    "    print(main(params))"
+    "    print(main(sys.argv[1:]))"
     )
-    output = run_python_code_tool.invoke({"filecontents": filecontents, "parameters": {"name": "Areeb"}})
+    output = run_python_code_tool.invoke({"file_content": file_content, "argv": ["Areeb"], "timeout_s": 10})
     print(output)
