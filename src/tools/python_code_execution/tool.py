@@ -4,11 +4,13 @@ It accepts the whole file content, optional CLI args, and a timeout.
 """
 from langchain_core.tools import tool
 import os
+
 import subprocess
-import sys
 import tempfile
 from typing import List
 
+from langchain_core.tools import tool
+from pydantic import BaseModel, Field
 
 @tool
 def run_python_code_tool(

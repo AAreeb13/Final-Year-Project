@@ -29,6 +29,8 @@ class SingleAgentModelOutput(BaseModel):
     # Code Generation 
     filename_to_code: dict[str, str] = dict()  # filename: code
     
+    files_run_with_output: dict[str, str] = dict()  # filename: output
+    
 if __name__ == "__main__":
     settings = import_settings()
 
@@ -59,7 +61,7 @@ if __name__ == "__main__":
         response_format=SingleAgentModelOutput
     )
     # print("here")
-    response_dict = agent.invoke({"messages": [HumanMessage("snake game using pygame")]})
+    response_dict = agent.invoke({"messages": [HumanMessage("snake game using pygame also make sure that each file has a __main__ function that that runs an example test case. Make sure to run the code and fix any errors until the code runs successfully.")]})
     response: SingleAgentModelOutput = SingleAgentModelOutput.model_validate_json(response_dict["messages"][-1].content)
     # print(response_dict["messages"][-1].content)
     
@@ -84,6 +86,9 @@ if __name__ == "__main__":
     print("\nGenerated Code:")
     for filename, code in response.filename_to_code.items():
         print(f"Filename: {filename}\nCode:\n{code}\n{'-'*40}")
+    print("\nCode Execution Output:") 
+    for filename, output in response.files_run_with_output.items():
+        print(f"Filename: {filename}\nOutput:\n{output}\n{'-'*40}")
     
     # create folder to store response
     current_directory = os.getcwd()
