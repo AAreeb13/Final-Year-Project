@@ -1,18 +1,40 @@
 
 import argparse
 import os
+import sys
 import time
+from pathlib import Path
 from typing import List
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from src.tools.python_code_execution.tool import run_python_code_tool
 
 def import_settings():
     from src.settings import settings
     return settings
+
+
+PROMPTS_DIR = Path(__file__).with_name("system_prompts")
+
+
+def available_prompt_names() -> list[str]:
+    return sorted(prompt_path.stem for prompt_path in PROMPTS_DIR.glob("*.txt"))
+
+
+def load_system_prompt(prompt_name: str) -> str:
+    prompt_path = PROMPTS_DIR / f"{prompt_name}.txt"
+    if not prompt_path.exists():
+        available = ", ".join(available_prompt_names())
+        raise ValueError(f"Unknown prompt '{prompt_name}'. Available prompts: {available}")
+    return prompt_path.read_text(encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,29 +45,39 @@ def parse_args() -> argparse.Namespace:
         "problem_statement",
         help="Natural-language problem statement for the agent to solve.",
     )
+    parser.add_argument(
+        "--prompt",
+        default="master",
+        choices=available_prompt_names(),
+        help="Which system prompt to use for this run.",
+    )
     return parser.parse_args()
+
 
 class SingleAgentModelOutput(BaseModel):
     # Task Decomposition
-    functional_requirements: List[str]
+    functional_requirements: List[str] = Field(default_factory=list)
     # Top-Down Decomposition
-    
-    components: List[str]
-    relationships: List[str]
+
+    components: List[str] = Field(default_factory=list)
+    relationships: List[str] = Field(default_factory=list)
     # System Design
-    solid_principles_used: List[str]
-    solid_principles_jeopardised: List[str]
-    
-    folder_structure_json: str
-    # Code Generation 
-    filename_to_code: dict[str, str] = dict()  # filename: code
-    
-    files_run_with_output: dict[str, str] = dict()  # filename: output
+    system_design: List[str] = Field(default_factory=list)
+    solid_principles_used: List[str] = Field(default_factory=list)
+    solid_principles_jeopardised: List[str] = Field(default_factory=list)
+
+    folder_structure_json: str = ""
+    # Code Generation
+    filename_to_code: dict[str, str] = Field(default_factory=dict)  # filename: code
+
+    files_run_with_output: dict[str, str] = Field(default_factory=dict)  # filename: output
 
 
-def build_agent(settings):
+def build_agent(settings, prompt_name: str):
     assert settings.OPEN_ROUTER_KEY is not None, "openrouterkey must be set in the .env file"
     print("Settings imported successfully. openrouterkey is set.")
+    system_prompt = load_system_prompt(prompt_name)
+    print(f"Using system prompt: {prompt_name}")
     model = ChatOpenAI(
         api_key=SecretStr(settings.OPEN_ROUTER_KEY),
         base_url="https://openrouter.ai/api/v1",
@@ -57,16 +89,7 @@ def build_agent(settings):
     
     agent = create_agent(
         model=model,
-        system_prompt=("You are multi-purpose agent that aims to follow Software Development LifeCycle. You must perform the following tasks in order\n" + 
-        "1. Perform Task Decomposition: Decompose the problem and extract functional requirements from a problem.\nDo not include any requirements that were not explicitly suggested."
-        "\n  Incorrect Example: Input=\"Iris Detector\" Functional Requirement: \"Authentication, user registration\"\n" +
-        "2. Perform Top-Down Decomposition to highlight high-level components and relationships between components\n" +
-        "3. System Design: Using the extracted components and relationships, perform high-level system design that describes which components will be functions, classes (super-classes, abstract classes) and APIs. Be sure to identify parameters.\n"
-        "   You must adhere to SOLID principles and identify where SOLID principles are being adhered to. \n"
-        "4. Provide a clear project folder structure\n"
-        "5. Code Generation: write Python code, for each file with comments of which SOLID principle is used and which principles may be jeopardised. Complete all the code and do not leave any sections empty\n"
-        "Tool contract for run_python_code_tool: pass `file_content` (string), optional `argv` (list of CLI args), and optional `timeout_s` (seconds). Do not use stdin JSON parameters.\n"
-        "Imports are allowed when required by the task."),
+        system_prompt=system_prompt,
         tools=[run_python_code_tool],
         response_format=SingleAgentModelOutput
     )
@@ -83,6 +106,9 @@ def display_response(response: SingleAgentModelOutput) -> None:
     print("\nRelationships:")
     for rel in response.relationships:
         print(f"- {rel}")
+    print("\nSystem Design:")
+    for design_item in response.system_design:
+        print(f"- {design_item}")
     print("\nSOLID Principles Used:")
     for solid in response.solid_principles_used:
         print(f"- {solid}")
@@ -99,30 +125,31 @@ def display_response(response: SingleAgentModelOutput) -> None:
         print(f"Filename: {filename}\nOutput:\n{output}\n{'-'*40}")
 
 
-def save_response(response_json: str) -> None:
+def save_response(response_json: str, prompt_name: str) -> None:
     current_directory = os.getcwd()
     response_directory = os.path.join(current_directory, ".response")
     os.makedirs(response_directory, exist_ok=True)
     cur_time = int(time.time())
     cur = hex(cur_time)[2:]
-    with open(os.path.join(response_directory, f"response{cur}.json"), "w") as f:      
-        print("Saving response to file at location:", os.path.join(response_directory, f"response{cur}.json"))  
+    output_filename = f"{prompt_name}_response{cur}.json"
+    with open(os.path.join(response_directory, output_filename), "w") as f:
+        print("Saving response to file at location:", os.path.join(response_directory, output_filename))
         f.write(response_json)
 
 
-def run(problem_statement: str) -> SingleAgentModelOutput:
+def run(problem_statement: str, prompt_name: str = "master") -> SingleAgentModelOutput:
     settings = import_settings()
-    agent = build_agent(settings)
+    agent = build_agent(settings, prompt_name)
     response_dict = agent.invoke({"messages": [HumanMessage(problem_statement)]})
     response_json = response_dict["messages"][-1].content
     response = SingleAgentModelOutput.model_validate_json(response_json)
     display_response(response)
-    save_response(response_json)
+    save_response(response_json, prompt_name)
     return response
 
 
 if __name__ == "__main__":
     args = parse_args()
-    run(args.problem_statement)
+    run(args.problem_statement, args.prompt)
         
  
