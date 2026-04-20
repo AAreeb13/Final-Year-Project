@@ -1,0 +1,63 @@
+\chapter{Project Plan}
+
+This project aims to design and implement a Multi-Agentic AI System to answer the following:
+
+\textbf{Research Question}: Can we teach an Agentic AI system to understand and apply Software Design Principles by leveraging the capacity of LLMs?
+
+\subsubsection{Properties of the Multi-Agent AI System}
+We aim for the system to demonstrate its ability to engage in and follow a complete Software Development Life-cycle with the following abilities:
+\begin{enumerate}
+    \item Understand \textbf{Software Design Principles} and execute them in appropriate scenarios,
+    \item Decompose and extract \textbf{functional requirements} from context-rich problems, with a logical framework into high-level \textbf{components} and \textbf{modules} and extract \textbf{relationships} between components,
+    \item \textbf{Reason} and \textbf{self-evaluate} upon initial designs and task decomposition attempts in an \textbf{iterative manner} by engaging in internal collaboration (communicating ideas between multiple agents). Provide \textbf{visibility} in internal communication and collaboration for effective debugging. Demonstrate \textbf{Test Driven Development} to produce functionally accurate software.
+\end{enumerate}
+
+
+The following components will constitute a complete project:
+\begin{itemize}
+    \item \textbf{GitHub Repository} - consists of the complete Multi-Agentic AI System
+    \item \textbf{Final report }- documentation of experiments, evaluations of alternative approaches for each milestone
+    \item \textbf{Front-end Interface} - kanban-style UI for demonstration and debugging purposes 
+    \item \textbf{Final Presentation} - presentation laid out in a cohesive, intuitive format.
+\end{itemize}
+
+
+
+
+% Explain what needs to be done for the project to be completed 
+
+% % 1. what has been done at the time of writing the report.
+
+% % 2. Timeline/ Milestones
+% % %  Include Final Report write up in Timeline
+\section{Rough Timeline}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|p{2.5cm}|p{3cm}|p{6cm}|}
+\hline
+    \textbf{Timeline} & \textbf{Milestones} & \textbf{Description} \\ \hline
+    \textbf{Dec - Mid Feb} & MAS Architectures, Single Agent System, Code Execution Tool, Evaluation System Setup & Finalise architecture stages and development framework. Develop a simple system with basic task decomposition, software design, and code generation. Set up RLHF pipeline and experiment with models. Integrate and test the Code Execution tool. \\ \hline
+    \textbf{Feb - Mid Mar} & Medium Agent System, Debugging UI, All Tools Integration & Incorporate additional specialised agents (reasoning, evaluation, and code generation). Prioritise improving abstraction and decomposition. Develop debugging UI and integrate all necessary tools into the system. \\ \hline
+    \textbf{Mid Mar - Mid Apr} & Multi-Agent AI System & Implement the complete system with orchestration and specialised agents architecture. Train agents to produce the desired output based on task decomposition. \\ \hline
+    \textbf{Mid Apr - Mid May} & Kanban-Style UI, Performance Tuning, Possible Extensions & Develop Kanban-style UI for task management. Focus on performance tuning and optimisation. Explore potential extensions if time allows, improving the system's scalability and responsiveness. \\ \hline
+    \textbf{Mid May - Jun} & Final Training, Testing, Presentation Planning & Finalise agent training, conduct thorough testing, and prepare for the final presentation. Ensure all project components are polished and working as expected. \\ \hline
+\end{tabular}
+\caption{Project Timeline and Milestones}
+\label{tab:timeline}
+\end{table}
+
+% % 3. Fallback positions, in case I run out of time.
+\section{Potential Risks}
+If the system struggles to incorporate task decomposition, then we can pivot to providing agentic system with a decomposed problem and assess software design abilities. If we encounter issues with any tools integrating, aside from code execution, we will not attempt to integrate the tools. The UI design could take extra time, and in this case we may need to take a minimilist approach to displaying internal communication via Python scripting or another simple to implement method. If agents struggle with autonomously making design decisions, we may need to encorporate light human interaction. Extensions will not be attempted if time does not permit it.
+% % 4. Potential Extensions 
+\section{Extensions}
+We can consider the following extensions if time permits them to be completed
+\begin{itemize}
+    \item MCP tooling provides extensive capabilities to agentic ai. A broad selection of tools can improve the system. For example, docker, for containerised execution and safe terminal access and linters. 
+    \item Robust memory store to allow for dynamic global memory across agents.
+    \item Introduce human interrupts handling that can completely change software design and requirements midway through.
+    \item Dynamic system pruning depending on the size of the problem scope.
+    \item Experiment with fine-tuning a model for  more desirable response from agents. 
+\end{itemize}
+ Additionally, the potential for publishing has not been discussed. In this case, we may want to consider addressing an security concerns, with the system and with the software built by the system. 
