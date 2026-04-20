@@ -1,0 +1,33 @@
+\chapter{Evaluation Plan}
+\section{Functional Requirements}
+Within our project, we need to assess its ability to follow a software development life-cycle. To do so, we need to collate multitudes of papers, software engineering problems with varying difficulty and create a dataset of problems and their solutions used as benchmarks.
+
+(1) \textbf{Requirements Engineering} - \textbf{Recall} - how many requirements were extracted
+
+(2) \textbf{Task Decomposition} - \textbf{Number of steps in task decomposition} benchmarked to the expected number of decomposed tasks.
+
+(3) \textbf{Software Design and Architecture} - \textbf{Number of design violations} (SOLID violations, incorrect usage of Design Patterns) 
+
+(4) \textbf{Code Quality} - Non-functional requirements include \textbf{code readability, maintainability and reusability, SOLID violations}. Functional requirements include \textbf{number of unit tests and integration tests passed} on independent test suite.
+
+(5) \textbf{Test Driven Development} - \textbf{Test Coverage, Test Maintenance} and ability to follow TDD. Tests include unit and integration tests.
+
+Secondly, we want to use metrics to analyse the system . Metrics will include \textbf{Percentage of problems solved}, \textbf{Tool Correctness} (determining the correct times to call a tool). 
+
+
+A successful system has the following abilities:
+\begin{enumerate}
+    \item Understand \textbf{Software Design Principles} and execute them in appropriate scenarios,
+    \item Decompose and extract \textbf{functional requirements} from context-rich problems, with a logical framework into high-level \textbf{components} and \textbf{modules} and extract \textbf{relationships} between components,
+    \item \textbf{Reason} and \textbf{self-evaluate} upon initial designs and task decomposition attempts in an \textbf{iterative manner} by engaging in internal collaboration (communicating ideas between multiple agents). Provide \textbf{visibility} in internal communication and collaboration for effective debugging. Demonstrate \textbf{Test Driven Development} to produce functionally accurate software.
+\end{enumerate}
+
+ % Project evaluation is very important, so it's important to think now about how you plan to measure success.
+ % Functional Accuracy, design principles met, test suite expanding all possible conditions.
+ % For example, what functionality do you need to demonstrate? tool usage
+ % What experiments to you need to undertake and what outcome(s) would constitute success?
+ % What benchmarks should you use?
+ % How has your project extended the state of the art?
+ % How do you measure qualitative aspects, such as ease of use?
+\section{State of the Art}
+We are potentially extending the state of the art by designing a system that is autonomous, reliable and most importantly has strong understanding and application of Software design principles. We have the potential to revolutionise Software Engineering to automate high-level thinking and abstract away the architectural discussions of software. 

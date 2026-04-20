@@ -1,0 +1,22 @@
+Agentic AI refers to Large Language Model-based autonomous systems capable of thinking, reasoning and acting in order to complete a set of goals\cite{agentic-ai-comp-survey}. This project aims to build and evaluate the ability of an Agentic AI system to decompose context-rich tasks, demonstrate software engineering principles and engage in effective internal collaboration by incorporating Large Language Models (LLMs). While LLMs provide the "brain", Agentic AI adds the "body". The primary focus will be on developing and analysing how well a Multi-Agentic AI System (MAAS) can produce and self-sustain a software development environment. 
+
+Since the conception of software engineering, the methodologies related to software development have always improved, for example, the pivot from waterfall to agile development\cite{agile-dev}. In recent years, new development styles such as "Vibe Coding"\cite{Ray_2025} and "AI assisted coding"\cite{sapkota2025vibecodingvsagentic} have emerged and heavily rely on human-lead AI development. However, these methodologies still require significant expertise in software architecture and oversight to produce scalable, reliable software. Within any development methodology, automation enables engineers to perform predictable actions in order to mitigate risks. Unfortunately, adopting a reliable yet inflexible solution does not allow engineers to react to all situations \cite{automation-test}. Agentic AI, on the other hand, extends beyond the limitations of automation and human supervision by incorporating autonomy - the ability to react intelligently in situations\cite{ai-education}.
+
+The complexity of Large Language Models (LLMs) is easy to forget when using them in day-to-day development. GPT-3 alone, although it was released in 2022, has 175 billion machine learning parameters \cite{brown2020languagemodelsfewshotlearners}. However, there are fundamental problems with LLMs when handling large projects themselves. 
+
+The first significant problem that we have with LLMs is their inability to handle large prompts, such as a research paper. LLMs attempt to gain understanding of the entirety of the prompt in one go\cite{tie2024llmsimperfectwhatempirical}. This is problematic when it causes degredation of the LLM's ability to perform other tasks and missing sections of code\cite{irwin2025llmssoftware}. The root of this problem is poor management of context. This projects aims to find a systematic way of extracting relevant contextual information.
+
+The second problem is poor high-level understanding of system architectures\cite{hou2024largelanguagemodelssoftware}. Unless explicitly told, LLMs rarely prioritise architectural choices of the system and when they do, tend to sacrifice their evaluation ability\cite{jin2025llmsllmbasedagentssoftware}. Although this is related to the previous point, the root of this problem is the lack of training in incorporating software engineering design and no true semantic understanding of the program \cite{eggers2025hiddenpitfallsllms}. 
+
+As a result, we see a low reliance in LLMs to perform high-level abstractions. 
+In essence, we require a system that can attain semantic understanding through good abstractions and decomposition. 
+
+Observing a gap in the field of software engineering, we are drawn to ask the following:\textbf{ Can we teach an Agentic AI system to understand and apply Software Design Principles by leveraging the capacity of LLMs?} This induces demand for a powerful autonomous system that has the capabilities to do the following:
+
+\begin{enumerate}
+    \item Execution of Software Development Principles: the ability to correctly choose and implement design principles in situations.
+    \item Context-heavy Task Decomposition: the ability to break down a task into digestible chunks in a coherent, logical manner.
+    \item Self-Critiquing: the ability to be self-aware, constantly iterate on ideas and collaborate to improve functional accuracy and design efficiency.
+\end{enumerate}
+
+The project is successful if the Multi Agentic AI System is able to dismantle a verbose project into a well-designed, deployable software product by testing it with academic papers, e.g. Iris Recognition\cite{daugman2004iris_web}, that detail a concept with a programmable solution and has the above features. The definition of 'well-designed' needs to be discussed and explicitly understood by the system.

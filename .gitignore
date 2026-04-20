@@ -3,3 +3,4 @@ playground/
 __pycache__/
 .env
 **/__pycache__/
+/.response
