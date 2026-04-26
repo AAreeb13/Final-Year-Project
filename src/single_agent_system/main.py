@@ -137,12 +137,17 @@ def save_response(response_json: str, prompt_name: str) -> None:
         f.write(response_json)
 
 
-def run(problem_statement: str, prompt_name: str = "master") -> SingleAgentModelOutput:
+def execute(problem_statement: str, prompt_name: str = "master") -> tuple[SingleAgentModelOutput, str]:
     settings = import_settings()
     agent = build_agent(settings, prompt_name)
     response_dict = agent.invoke({"messages": [HumanMessage(problem_statement)]})
     response_json = response_dict["messages"][-1].content
     response = SingleAgentModelOutput.model_validate_json(response_json)
+    return response, response_json
+
+
+def run(problem_statement: str, prompt_name: str = "master") -> SingleAgentModelOutput:
+    response, response_json = execute(problem_statement, prompt_name)
     display_response(response)
     save_response(response_json, prompt_name)
     return response
