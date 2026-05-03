@@ -1,0 +1,142 @@
+Yes. The key is to make each stage measurable in a way that is as objective as possible, so your evaluation is not just “the output looked good.”
+
+A strong way to do it is to give each stage:
+
+an artifact,
+a few primary metrics,
+a success condition.
+Here’s a tighter version.
+
+Planning
+
+Artifact: project brief with scope, goals, assumptions, constraints, and success criteria.
+
+Metrics:
+
+Goal coverage: percentage of core goals from the source problem captured in the planning document.
+Constraint capture: percentage of explicit constraints identified.
+Scope precision: number of invented/out-of-scope objectives added by the system.
+Success criteria clarity: whether the plan defines measurable completion criteria for the task.
+How to score:
+
+Compare the plan against a gold standard or human-written reference brief.
+Use precision/recall style scoring for goals and constraints.
+Why it matters:
+
+Shows whether the system can frame the problem correctly before building anything.
+Analysis
+
+Artifact: structured requirements document with functional and non-functional requirements.
+
+Metrics:
+
+Requirement recall: proportion of true requirements correctly extracted.
+Requirement precision: proportion of extracted requirements that are actually valid.
+Non-functional requirement detection: how many performance, security, usability, scalability, or reliability requirements were captured.
+Ambiguity detection rate: proportion of ambiguous or underspecified requirements the system flags.
+Requirement traceability: percentage of requirements linked back to evidence in the original problem statement.
+How to score:
+
+Build an annotated benchmark with expected requirements.
+Use human marking for ambiguity flags if needed.
+Why it matters:
+
+This is one of the cleanest places to evaluate context understanding.
+Design
+
+Artifact: software design document with architecture, components, interfaces, data flow, and rationale.
+
+Metrics:
+
+Requirement-to-component coverage: percentage of requirements addressed by at least one design component.
+Architecture coherence: whether components and interactions form a logically consistent system.
+Design principle adherence: number of SOLID violations, poor abstractions, or inappropriate pattern choices.
+Modularity score: degree of separation of concerns, low coupling, and high cohesion.
+Rationale quality: whether major design choices are justified against requirements and constraints.
+Interface completeness: percentage of major component interactions clearly defined.
+How to score:
+
+Use a rubric with human assessors for coherence and rationale.
+Use static review criteria for SOLID/modularity violations.
+Why it matters:
+
+This should be the central stage of your project because it aligns most directly with your research question.
+Coding
+
+Artifact: working implementation derived from the design.
+
+Metrics:
+
+Functional correctness: percentage of independent test cases passed.
+Design conformance: degree to which code structure matches the proposed design.
+Code quality: readability, maintainability, duplication, naming quality, and complexity.
+Implementation completeness: percentage of required features implemented.
+Build success rate: whether the project runs successfully without manual fixes.
+How to score:
+
+Use hidden tests plus rubric-based code review.
+Check whether files/modules reflect the planned architecture.
+Why it matters:
+
+Separates “good design thinking” from “just producing code.”
+Testing
+
+Artifact: generated tests, bug reports, fixes, and refined implementation.
+
+Metrics:
+
+Test coverage: line/branch/function coverage if appropriate.
+Test quality: whether tests cover nominal, edge, and failure cases.
+Bug detection rate: number of real defects found by the system.
+Repair success rate: proportion of detected bugs successfully fixed.
+Regression rate: number of previously passing tests broken after fixes.
+TDD adherence: whether tests are created before or alongside implementation changes in the intended workflow.
+How to score:
+
+Compare generated tests against seeded bugs or hidden faults.
+Track fix attempts and regression outcomes.
+Why it matters:
+
+Measures whether the system can self-correct, not just generate a first draft.
+Deployment
+
+Artifact: runnable/deployable system with setup instructions or deployment config.
+
+Metrics:
+
+Deployment success: whether the software can be deployed/executed in a clean environment.
+Environment reproducibility: whether dependencies and configuration are fully specified.
+Runtime readiness: whether the deployed system actually performs its intended function.
+Operational completeness: presence of required scripts, config, documentation, and startup instructions.
+How to score:
+
+Test in a fresh environment or container.
+Measure whether setup succeeds without manual intervention.
+Why it matters:
+
+Useful, but probably lower priority than analysis, design, coding, and testing.
+Recommended Core Metrics
+
+If you want a smaller, sharper evaluation set, I’d prioritise these:
+
+Planning: goal coverage, constraint capture
+Analysis: requirement precision, requirement recall, ambiguity detection
+Design: requirement-to-component coverage, design principle adherence, modularity score
+Coding: functional correctness, design conformance
+Testing: bug detection rate, repair success rate, regression rate
+Deployment: deployment success
+Important Improvement
+
+For your dissertation, I’d avoid metrics like “number of steps in decomposition” by itself. More steps does not mean better decomposition. A better metric is:
+
+decomposition adequacy: whether the decomposition is complete, non-redundant, and logically structured.
+So in general, prefer quality metrics over simple count metrics.
+
+Best Framing Sentence
+
+You could write it like this:
+
+“The system will be evaluated stage-by-stage across the SDLC, with each stage producing a formal artifact and being assessed using task-specific quality metrics that measure completeness, correctness, traceability, and design quality.”
+
+If you want, I can turn this into a clean table for your report with columns:
+Stage | Artifact | Metrics | How Measured | Success Criterion.
