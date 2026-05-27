@@ -1,4 +1,15 @@
+from __future__ import annotations
+
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import re
+
+import pytest
 
 from src.tools.python_code_execution.tool import run_python_code_tool
 
@@ -21,3 +32,7 @@ def test_execution_returns_error_on_exception():
     output = invoke_tool("raise RuntimeError('boom')")
     assert "Execution failed with exit code" in output
     assert "RuntimeError" in output
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__]))
