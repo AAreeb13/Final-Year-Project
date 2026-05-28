@@ -2,12 +2,28 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import sys
+from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, request
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.single_agent_system.main import available_prompt_names
 from src.single_agent_system.main import run as run_single_agent
+
+# API routes
+# /health - GET - returns {"status": "ok"} if the API is running
+# /systems - GET - returns a list of available agent systems with their descriptions and default prompts
+# /systems/<system_id>/prompts - GET - returns a list of available prompts for the specified system
+# /systems/<system_id>/run - POST - runs the specified system with the given payload
+# /agent/<agent_id>/tool/<tool_name> - POST - receives when a toolcall occurs from agents (placeholder for now)
+# /agent/<agent_id>/tool/<tool_name>/output - POST - receives tool outputs from agents (placeholder for now)
+
 
 
 class AgentSystem(ABC):
@@ -134,7 +150,25 @@ def create_app(registry: AgentSystemRegistry | None = None) -> Flask:
 
 		return jsonify({"system_id": system_id, "result": result}), 200
 
+
+	@app.post("/agent/<agent_id>/tool/<tool_name>")
+	def register_tool_callback(agent_id: str, tool_name: str) -> tuple[Any, int]:
+		# This is a placeholder endpoint to receive tool outputs from agents.
+		# In a real implementation, you would need to route this to the correct agent instance and handle the output accordingly.
+		output = request.get_json(silent=True) or {}
+		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
+		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200
+	
+	@app.post("/agent/<agent_id>/tool/<tool_name>/output")
+	def receive_tool_output(agent_id: str, tool_name: str) -> tuple[Any, int]:
+		# This is a placeholder endpoint to receive tool outputs from agents.
+		# In a real implementation, you would need to route this to the correct agent instance and handle the output accordingly.
+		output = request.get_json(silent=True) or {}
+		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
+		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200
 	return app
+
+
 
 
 app = create_app()

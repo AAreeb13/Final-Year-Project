@@ -46,12 +46,21 @@ def build_server_params(token: str) -> StdioServerParameters:
     )
 
 
-def get_github_tools() -> List[BaseTool]:
+def get_all_github_tools() -> List[BaseTool]:
     # syncronous fetching
     return asyncio.run(fetch_tools())
 
+def get_specific_github_tools(tool_names: List[str]) -> List[BaseTool]:
+    all_tools = get_all_github_tools()
+    tool_name_set = set(tool_names)
+    selected_tools = [tool for tool in all_tools if tool.name in tool_name_set]
+    missing_tools = tool_name_set - set(tool.name for tool in selected_tools)
+    if missing_tools:
+        raise ValueError(f"Requested GitHub tools not found: {', '.join(missing_tools)}")
+    return selected_tools
+
 def get_github_tools_names() -> List[str]:
-    tools = get_github_tools()
+    tools = get_all_github_tools()
     return [tool.name for tool in tools]
 
 async def fetch_tools() -> List[BaseTool]:
@@ -73,4 +82,7 @@ if __name__ == "__main__":
     # get names
     tool_names = get_github_tools_names()
     print("Available GitHub Tools:")
-    for name in tool_names:        print(f"- {name}")
+    for name in tool_names:
+        print(f"- {name}")
+
+    

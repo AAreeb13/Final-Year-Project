@@ -35,11 +35,12 @@ def run_python_code_tool(
         argv = []
 
     temp_file_path = None
+    print("Running code from temporary file:", temp_file_path)
+
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as temp_file:
             temp_file.write(file_content.encode())
             temp_file_path = temp_file.name
-
         result = subprocess.run(
             [sys.executable, temp_file_path, *argv],
             capture_output=True,
@@ -55,7 +56,7 @@ def run_python_code_tool(
                 f"STDOUT:\n{result.stdout.strip()}"
             )
 
-        return result.stdout
+        return f"Tool Output\n{result.stdout}"
     finally:
         if temp_file_path is not None and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
