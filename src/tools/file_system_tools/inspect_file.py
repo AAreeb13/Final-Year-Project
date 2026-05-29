@@ -55,4 +55,4 @@ def inspect_file(relative_path: str) -> str:
 
 
 if __name__ == "__main__":
-    print(inspect_file.invoke({"relative_path": "idk.txt"}))
+    print(inspect_file.invoke({"relative_path": "test/idk.txt"}))
