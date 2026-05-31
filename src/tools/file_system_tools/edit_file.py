@@ -54,5 +54,5 @@ def edit_file(relative_path: str, new_content: str, new_file: bool = False) -> s
 
 if __name__ == "__main__":
     # Example usage
-    result = edit_file.invoke({"relative_path": "test_repository/example.txt", "new_content": f"# Agent: {date.today()} \nThis is the new new content of the file.", "new_file": False})
+    result = edit_file.invoke({"relative_path": "repository/example.txt", "new_content": f"# Agent: {date.today()} \nThis is the new new content of the file.", "new_file": False})
     print(result)

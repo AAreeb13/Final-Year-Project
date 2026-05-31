@@ -99,7 +99,9 @@ def inspect_folder_structure(
     extra_ignored_names: list[str] | None = None,
 ) -> str:
     """
-    Return a tree view of the configured workplace. Workplace usually only contains a single repository.
+    Return a tree view of the configured workplace,  the total number of entries and whether it's truncated 
+    The output follows this format: {"tree": str, "total_entries": int, "truncated": bool}
+    Workplace should only contain a single repository.
 
     Args:
         relative_path: Optional path inside the workplace folder to inspect.
@@ -113,7 +115,12 @@ def inspect_folder_structure(
     bounded_max_entries = max(1, min(max_entries, 1000))
 
     if target_path.is_file():
-        return str(target_path.relative_to(Path(settings.WORKPLACE_FOLDER).resolve()))
+        return {"tree": str(target_path.relative_to(Path(settings.WORKPLACE_FOLDER).resolve())), "total_entries": 1, "truncated": False}
+
+    #check if the directory is empty after ignoring
+    if all(child.name in ignored_names for child in target_path.iterdir()):
+        return {"tree": "(empty)", "total_entries": 0, "truncated": False}
+    
 
     lines, truncated = _build_tree_lines(
         target_path,
@@ -125,7 +132,7 @@ def inspect_folder_structure(
     if truncated:
         lines.append(f"... truncated after {bounded_max_entries} entries")
 
-    return "\n".join(lines)
+    return {"tree": "\n".join(lines), "total_entries": len(lines) - 1, "truncated": truncated}
 
 
 if __name__ == "__main__":
