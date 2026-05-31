@@ -1,5 +1,9 @@
+from typing import Sequence
+
 from langchain.agents import create_agent
+from langchain.agents.middleware import AgentMiddleware
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from pydantic import SecretStr
 from src.settings import settings
 
@@ -7,7 +11,14 @@ from src.agents.constants import AgentType
 
 class AgentFactory:
     @staticmethod
-    def build_agent(prompt: str, tools: list, temperature: float = 0.7, model_name: str = "gpt-4o-mini"):
+    def build_agent(
+        prompt: str,
+        tools: list,
+        temperature: float = 0.7,
+        model_name: str = "gpt-4o-mini",
+        middleware: Sequence[AgentMiddleware] | None = None,
+        checkpointer: BaseCheckpointSaver | None = None,
+    ):
 
         assert settings.OPEN_ROUTER_KEY is not None, "OPEN_ROUTER_KEY must be set in the .env file"
 
@@ -22,6 +33,8 @@ class AgentFactory:
             model=llm,
             tools=tools or [],
             system_prompt=prompt,
+            middleware=middleware or (),
+            checkpointer=checkpointer,
         )
         
         return agent
