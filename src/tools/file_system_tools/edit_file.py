@@ -3,11 +3,12 @@ import json
 from pathlib import Path
 
 from langchain_core.tools import tool
+from tools.tool_schemas import EditFileSchema
 
 from src.settings import settings
 
 
-@tool
+@tool(args_schema=EditFileSchema)
 def edit_file(relative_path: str, new_content: str, new_file: bool = False) -> str:
     """
     Edit a file in the workplace folder by replacing its contents with new content.

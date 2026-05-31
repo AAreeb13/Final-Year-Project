@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Iterable
 
 from langchain_core.tools import tool
+from tools.tool_schemas import InspectFolderStructureSchema
 
 from src.settings import settings
 
@@ -90,8 +91,8 @@ def _build_tree_lines(
     return lines, truncated
 
 
-@tool
-def inspect_repository_structure(
+@tool(args_schema=InspectFolderStructureSchema)
+def inspect_folder_structure(
     relative_path: str | None = None,
     max_depth: int = 4,
     max_entries: int = 200,
@@ -128,4 +129,4 @@ def inspect_repository_structure(
 
 
 if __name__ == "__main__":
-    print(inspect_repository_structure.invoke({}))
+    print(inspect_folder_structure.invoke({}))

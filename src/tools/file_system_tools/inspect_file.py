@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from langchain_core.tools import tool
+from tools.tool_schemas import InspectFileSchema
 
 from src.settings import settings
 
@@ -26,7 +27,7 @@ def _resolve_file_inside_workspace(relative_path: str) -> Path:
     return file_path
 
 
-@tool
+@tool(args_schema=InspectFileSchema)
 def inspect_file(relative_path: str) -> str:
     """
     Inspect a file in the workplace folder and return its contents as a JSON string.
