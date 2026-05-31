@@ -1,3 +1,4 @@
+from datetime import date
 import json
 from pathlib import Path
 
@@ -25,14 +26,22 @@ def edit_file(relative_path: str, new_content: str, new_file: bool = False) -> s
         return json.dumps({"status": "error", "message": "Path must stay inside the configured workplace folder."})
 
     if not file_path.exists():
-        return json.dumps({"status": "error", "message": f"File not found: {relative_path}"})
-
+        if new_file:
+            try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.touch(exist_ok=False)
+            except Exception as error:
+                return json.dumps({"status": "error", "message": f"Failed to create new file: {str(error)}"})
+        else:
+            return json.dumps({"status": "error", "message": f"File not found: {relative_path}"})
+    else:
+        if new_file:
+            return json.dumps({"status": "error", "message": f"File already exists: {relative_path}"})
+        
     if not file_path.is_file():
-        if not new_file:
-            return json.dumps({"status": "error", "message": f"Path is not a file: {relative_path}"})
+        return json.dumps({"status": "error", "message": f"Path is not a file: {relative_path}"})
         
         # create a new file
-        file_path.touch()
 
     try:
         file_path.write_text(new_content, encoding="utf-8")
@@ -41,3 +50,8 @@ def edit_file(relative_path: str, new_content: str, new_file: bool = False) -> s
         return json.dumps({"status": "error", "message": f"Failed to write to file: {str(error)}"})
 
     return json.dumps({"status": "success", "message": "File edited successfully."})
+
+if __name__ == "__main__":
+    # Example usage
+    result = edit_file.invoke({"relative_path": "test_repository/example.txt", "new_content": f"# Agent: {date.today()} \nThis is the new new content of the file.", "new_file": False})
+    print(result)

@@ -2,16 +2,24 @@ import os
 from typing import Sequence
 
 import docker
+from docker.errors import DockerException
 from docker.models.containers import Container
-
+from src.settings import settings
 
 DEFAULT_IMAGE = "agent-python-git:latest"
 DEFAULT_WORKSPACE_BIND = "/workspace"
 
 
 def _get_client() -> docker.DockerClient:
-    return docker.from_env()
-
+    try:
+        client = docker.from_env()
+        client.ping()
+        return client
+    except (DockerException, FileNotFoundError, OSError) as error:
+        raise RuntimeError(
+            "Docker is not available. Start the Docker daemon or make sure the Docker socket is mounted "
+            "before running this tool."
+        ) from error
 
 def _format_exec_output(exit_code: int, output: bytes) -> str:
     text_output = output.decode(errors="replace")
@@ -27,9 +35,13 @@ def start_container(
     memory_limit: str = "256m",
     container_name: str | None = None,
 ) -> str:
-    client = _get_client()
-    absolute_workspace_path = os.path.abspath(workspace_path)
+    # print("WOrkspace path:", workspace_path)
+    print("Starting Docker container...")
 
+    client = _get_client()
+    # print("Got Docker client.")
+    absolute_workspace_path = os.path.abspath(workspace_path)
+    print(f"absolute_workspace_path: {absolute_workspace_path}")
     container: Container = client.containers.run(
         image=image,
         command=["sleep", "infinity"],
@@ -69,6 +81,7 @@ def close_container(container_id: str) -> None:
 
 
 def run_in_container(command: list[str], workspace_path: str) -> str:
+    
     container_id = start_container(workspace_path)
     try:
         return run_command_in_container(container_id, command)
@@ -79,28 +92,26 @@ def run_in_container(command: list[str], workspace_path: str) -> str:
 if __name__ == "__main__":
     print("Testing Docker Code Execution...")
 
-    folder = "/home/areebwsl/Documents/Final-Year-Project/._workplace"
+    folder = settings.WORKPLACE_FOLDER
     print("Initializing folder...")
     if not os.path.exists(folder):
         os.makedirs(folder)
 
     test_file = """print("Hello, World!")
 """
-    print("Creating test file...")
-    with open(f"{folder}/test.py", "w") as f:
-        f.write(test_file)
+    # check if the file already exists, if not create it
+    if not os.path.exists(f"{folder}/test.py"):
+        print("Creating test file...")
+        with open(f"{folder}/test.py", "w") as f:
+            f.write(test_file)
+
 
     command = ["python", "test.py"]
 
-    print("Starting container...")
-    container_id = start_container(folder)
-
     try:
-        print("Running command in container...")
-        output = run_command_in_container(container_id, command)
-
-        print("\nOutput from container:")
+        output = run_in_container(command, folder)
+        print("Command output:")
         print(output)
-    finally:
-        print("Closing container...")
-        close_container(container_id)
+    except Exception as error:
+        print(f"Error: {error}")
+    

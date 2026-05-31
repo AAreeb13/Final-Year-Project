@@ -98,7 +98,7 @@ def inspect_repository_structure(
     extra_ignored_names: list[str] | None = None,
 ) -> str:
     """
-    Return a tree view of the configured workplace repository.
+    Return a tree view of the configured workplace. Workplace usually only contains a single repository.
 
     Args:
         relative_path: Optional path inside the workplace folder to inspect.
