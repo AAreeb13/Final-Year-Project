@@ -23,6 +23,7 @@ class EditFileSchema(BaseModel):
     relative_path: str
     new_content: str
     new_file: bool = False
+    
 
 class InspectFileSchema(BaseModel):
     """

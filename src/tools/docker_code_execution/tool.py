@@ -4,10 +4,31 @@ from typing import Sequence
 import docker
 from docker.errors import DockerException
 from docker.models.containers import Container
+from langchain_core.tools import tool
+from tools.tool_schemas import RunInContainerSchema
 from src.settings import settings
 
 DEFAULT_IMAGE = "agent-python-git:latest"
 DEFAULT_WORKSPACE_BIND = "/workspace"
+
+
+
+
+@tool(args_schema=RunInContainerSchema)  
+def run_in_container(command: list[str]) -> str:
+    workspace_path = settings.WORKPLACE_FOLDER
+    if workspace_path is None:
+        raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
+    
+    if not os.path.exists(workspace_path):
+        raise ValueError(f"WORKPLACE_FOLDER path does not exist: {workspace_path}")
+    container_id = _start_container(workspace_path)
+
+    try:
+        return _run_command_in_container(container_id, command)
+    finally:
+        _close_container(container_id)
+
 
 
 def _get_client() -> docker.DockerClient:
@@ -29,7 +50,7 @@ def _format_exec_output(exit_code: int, output: bytes) -> str:
     return f"Command failed with exit code {exit_code}.\n{text_output}"
 
 
-def start_container(
+def _start_container(
     workspace_path: str,
     image: str = DEFAULT_IMAGE,
     memory_limit: str = "256m",
@@ -60,8 +81,14 @@ def start_container(
 
     return container.id
 
+def _close_container(container_id: str) -> None:
+    client = _get_client()
+    container = client.containers.get(container_id)
+    container.stop()
+    container.remove()
 
-def run_command_in_container(container_id: str, command: Sequence[str]) -> str:
+
+def _run_command_in_container(container_id: str, command: Sequence[str]) -> str:
     client = _get_client()
     container = client.containers.get(container_id)
 
@@ -73,20 +100,8 @@ def run_command_in_container(container_id: str, command: Sequence[str]) -> str:
     return _format_exec_output(exit_code, output)
 
 
-def close_container(container_id: str) -> None:
-    client = _get_client()
-    container = client.containers.get(container_id)
-    container.stop()
-    container.remove()
 
 
-def run_in_container(command: list[str], workspace_path: str) -> str:
-    
-    container_id = start_container(workspace_path)
-    try:
-        return run_command_in_container(container_id, command)
-    finally:
-        close_container(container_id)
 
 
 if __name__ == "__main__":
