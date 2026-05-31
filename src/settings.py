@@ -17,7 +17,7 @@ class Settings(BaseSettings):
             print("Warning: GITHUB_PERSONAL_ACCESS_TOKEN is not set. The agent will not be able to use GitHub-related tools.")
         if self.WORKPLACE_FOLDER is None:
             raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
-
+        print(self.WORKPLACE_FOLDER)
 settings = Settings()
 
 if __name__ == "__main__":
