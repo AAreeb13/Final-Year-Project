@@ -13,9 +13,6 @@ from langgraph.types import Command
 
 from src.agents.AgentFactory import AgentFactory
 
-
-
-
 def build_writer_agent():
     prompt = load_writer_system_prompt()
     tools = [
