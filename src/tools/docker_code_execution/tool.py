@@ -5,9 +5,8 @@ import docker
 from docker.errors import DockerException
 from docker.models.containers import Container
 from langchain_core.tools import tool
-from tools.tool_schemas import RunInContainerSchema
+from src.tools.tool_schemas import RunInContainerSchema
 from src.settings import settings
-
 DEFAULT_IMAGE = "agent-python-git:latest"
 DEFAULT_WORKSPACE_BIND = "/workspace"
 
