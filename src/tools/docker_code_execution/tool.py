@@ -120,10 +120,8 @@ if __name__ == "__main__":
             f.write(test_file)
 
 
-    command = ["python", "test.py"]
-
     try:
-        output = run_in_container(command, folder)
+        output = run_in_container(command)
         print("Command output:")
         print(output)
     except Exception as error:
