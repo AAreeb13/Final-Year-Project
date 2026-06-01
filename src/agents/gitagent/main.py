@@ -12,7 +12,7 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
-from src.tools.git_tooling.main import get_github_tools_names, get_specific_github_tools
+from tools.git_tooling.mcp_tools import get_github_tools_names, get_specific_github_tools
 
 acceptable_tool_names = ['create_or_update_file',
                         'create_repository',

@@ -4,6 +4,7 @@ import uuid
 from tools.file_system_tools.manage_file import edit_file, create_file
 from tools.file_system_tools.inspect_file import inspect_file
 from tools.file_system_tools.inspect_workplace import inspect_folder_structure
+from tools.file_system_tools.manage_folders import create_folder, delete_folder
 
 from langchain_core.messages import HumanMessage
 from langchain.agents.middleware import HumanInTheLoopMiddleware
@@ -22,6 +23,8 @@ def build_writer_agent():
         inspect_file,
         create_file,
         edit_file,
+        create_folder,
+        delete_folder,
     ]
     middleware = [
         HumanInTheLoopMiddleware(
