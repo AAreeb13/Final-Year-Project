@@ -19,7 +19,7 @@ class Settings(BaseSettings):
             self.WORKPLACE_FOLDER = input("Enter the path to the workplace folder: ").strip()
             if not self.WORKPLACE_FOLDER:
                 raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
-        print(self.WORKPLACE_FOLDER)
+
 settings = Settings()
 
 if __name__ == "__main__":
