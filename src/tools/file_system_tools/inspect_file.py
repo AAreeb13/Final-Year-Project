@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from langchain_core.tools import tool
-from tools.tool_schemas import InspectFileSchema
+from src.tools.tool_schemas import InspectFileSchema
 
 from src.settings import settings
 
