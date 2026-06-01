@@ -1,9 +1,10 @@
 from typing import Sequence
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware import AgentMiddleware, HumanInTheLoopMiddleware
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import SecretStr
 from src.settings import settings
 
@@ -38,3 +39,27 @@ class AgentFactory:
         )
         
         return agent
+    @staticmethod
+    def build_agent_with_HITLmiddleware_InMemCheckpointer(
+        prompt: str,
+        tools: list,
+        temperature: float = 0.7,
+        model_name: str = "gpt-4o-mini",
+    ):
+        middleware = [
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    tool.name: {"allowed_decisions": ["approve", "reject"]}
+                    for tool in tools
+                }
+            )
+        ]
+        checkpointer = InMemorySaver()
+        return AgentFactory.build_agent(
+            prompt=prompt,
+            tools=tools,
+            temperature=temperature,
+            model_name=model_name,
+            middleware=middleware,
+            checkpointer=checkpointer,
+        )
