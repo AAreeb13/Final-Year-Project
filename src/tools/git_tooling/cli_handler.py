@@ -64,8 +64,7 @@ class GitCLI:
         return self._run_git_command(["status"])
     
     def diff(self, *args: str) -> GitOutput:
-        return self._run_git_command(["diff", *args]
-    )
+        return self._run_git_command(["diff", *args])
 
     def current_branch(self) -> GitOutput:
         return self._run_git_command(["branch", "--show-current"])
