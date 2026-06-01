@@ -1,12 +1,11 @@
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 class GitCLIError(Exception):
     pass
 
-@dataclass
-class GitOutput:
+class GitOutput(TypedDict):
     command: str
     exit_code: int
     stdout: str
@@ -74,7 +73,7 @@ class GitCLI:
     def create_branch(self, branch_name: str) -> GitOutput:
         # check if the branch already exists
         branch_result = self._run_git_command(["branch", "--list", branch_name])
-        if not branch_result.success:
+        if not branch_result.get("success", False):
             return self._run_git_command(["branch", branch_name])
     def log(self, limit: int = 10, oneline: bool = True) -> GitOutput:
         args = ["log", f"--max-count={limit}"]
@@ -84,16 +83,16 @@ class GitCLI:
 
     def stage_and_commit_items(self, *items: str, message: str ) -> GitOutput:
         stage_result = self._run_git_command(["add", *items])
-        if not stage_result.success:
+        if not stage_result.get("success", False):
             return stage_result
         return self._run_git_command(["commit", "-m", message])
     
     def push(self, remote: str = "origin", branch: str | None = None) -> GitOutput:
         if branch is None:
             branch_result = self.current_branch()
-            if not branch_result.success:
+            if not branch_result.get("success", False):
                 return branch_result
-            branch = branch_result.stdout.strip()
+            branch = branch_result.get("stdout", "").strip()
         return self._run_git_command(["push", remote, branch])
     
     @staticmethod
@@ -153,10 +152,11 @@ if __name__ == "__main__":
         try:
             clone_result = GitCLI.clone_repository(repo_url)
             print(clone_result)
-            if clone_result.success:
-                print(f"Successfully cloned repository: {clone_result.stdout}")
+            if clone_result.get("success", False):
+                print(f"Successfully cloned repository: {clone_result.get('stdout', '')}")
+                print(f"StdErr: {clone_result.get('stderr', '')}")
             else:
-                print(f"Failed to clone repository: {clone_result.stderr}")
+                print(f"Failed to clone repository: {clone_result.get('stderr', '')}")
         except GitCLIError as e:
             print(f"Error cloning repository: {e}")
 
