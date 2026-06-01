@@ -22,8 +22,19 @@ class EditFileSchema(BaseModel):
     """
     relative_path: str
     new_content: str
-    new_file: bool = False
-    
+
+class CreateFileSchema(BaseModel):
+    """
+    Schema for the create_file tool.
+    """
+    relative_path_to_folder: str
+    file_name: str
+
+class DeleteFileSchema(BaseModel):
+    """
+    Schema for the delete_file tool.
+    """
+    relative_path: str
 
 class InspectFileSchema(BaseModel):
     """
@@ -37,4 +48,9 @@ class CreateFolderSchema(BaseModel):
     """
     relative_path: str
 
-DeleteFolderSchema = CreateFolderSchema
+
+class DeleteFolderSchema(BaseModel):
+    """
+    Schema for the delete_folder tool.
+    """
+    relative_path: str
