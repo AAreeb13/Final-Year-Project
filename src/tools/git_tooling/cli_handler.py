@@ -70,10 +70,12 @@ class GitCLI:
         return self._run_git_command(["branch", "--show-current"])
     
     def create_branch(self, branch_name: str) -> GitOutput:
-        # check if the branch already exists
         branch_result = self._run_git_command(["branch", "--list", branch_name])
         if not branch_result.get("success", False):
-            return self._run_git_command(["branch", branch_name])
+            return branch_result
+        if branch_result.get("stdout", "").strip():
+            return branch_result
+        return self._run_git_command(["branch", branch_name])
     def log(self, limit: int = 10, oneline: bool = True) -> GitOutput:
         args = ["log", f"--max-count={limit}"]
         if oneline:
