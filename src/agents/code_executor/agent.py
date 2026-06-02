@@ -1,7 +1,7 @@
 
 import uuid
 
-from src.tools.docker_code_execution.tool import run_in_container
+from src.tools.docker_code_execution.tool import run_in_container, stop_container
 
 from src.agents.AgentFactory import AgentFactory
 from src.agents.human_approval_runner import run_with_human_approval
@@ -18,7 +18,8 @@ def build_code_executor_agent():
     tools = [
         inspect_folder_structure,
         inspect_file,
-        run_in_container
+        run_in_container,
+        stop_container,
     ]
     return AgentFactory.build_agent_with_HITLmiddleware_InMemCheckpointer(
         prompt=prompt,

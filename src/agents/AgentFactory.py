@@ -19,6 +19,7 @@ class AgentFactory:
         model_name: str = "gpt-4o-mini",
         middleware: Sequence[AgentMiddleware] | None = None,
         checkpointer: BaseCheckpointSaver | None = None,
+        response_format=None,
     ):
 
         assert settings.OPEN_ROUTER_KEY is not None, "OPEN_ROUTER_KEY must be set in the .env file"
@@ -36,6 +37,7 @@ class AgentFactory:
             system_prompt=prompt,
             middleware=middleware or (),
             checkpointer=checkpointer,
+            response_format=response_format,
         )
         
         return agent
@@ -45,6 +47,7 @@ class AgentFactory:
         tools: list,
         temperature: float = 0.7,
         model_name: str = "gpt-4o-mini",
+        response_format=None,
     ):
         middleware = [
             HumanInTheLoopMiddleware(
@@ -62,4 +65,5 @@ class AgentFactory:
             model_name=model_name,
             middleware=middleware,
             checkpointer=checkpointer,
+            response_format=response_format,
         )
