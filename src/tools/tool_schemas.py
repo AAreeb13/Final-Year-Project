@@ -6,6 +6,7 @@ class RunInContainerSchema(BaseModel):
     Schema for the run_in_container tool.
     """
     command: list[str]
+    timeout_s: int = 30
 
 class InspectFolderStructureSchema(BaseModel):
     """

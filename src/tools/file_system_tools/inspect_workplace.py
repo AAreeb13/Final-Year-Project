@@ -25,7 +25,7 @@ DEFAULT_IGNORED_NAMES = {
 def _resolve_inside_workspace(relative_path: str | None = None) -> Path:
     workspace_root = Path(settings.WORKPLACE_FOLDER).expanduser().resolve()
 
-    if relative_path in (None, "", "."):
+    if relative_path in (None, "", ".", "./", '/', "~", "~/"):
         target_path = workspace_root
     else:
         target_path = (workspace_root / relative_path).expanduser().resolve()
