@@ -544,6 +544,8 @@ class AgentSystemMediumGraph:
             "When stage is execution, inspect the command/test result and decide whether the written files are complete or need repair. "
             "Use task_store as the persistent memory of which files are pending, written_untested, tested, or failed; do not rely on memory alone. "
             "Include requirements, design, repository structure, file tasks, dependency plan, and test plan.\n\n"
+            "Format dependency_plan.setup_commands and test_plan.test_commands as arrays of argv arrays, "
+            'for example [["python", "-m", "pytest"]]. Do not use command/description objects for commands.\n\n'
             f"Input:\n{json.dumps(step_input, indent=2, default=str)}"
         )
 

@@ -142,12 +142,21 @@ def _normalize_commands(value: Any) -> Any:
         return []
     if isinstance(value, str):
         return [shlex.split(value)]
+    if isinstance(value, dict):
+        command = value.get("command") or value.get("cmd") or value.get("args")
+        return [_normalize_command(command)] if command is not None else value
     if isinstance(value, list):
         normalized = []
         for command in value:
-            if isinstance(command, str):
-                normalized.append(shlex.split(command))
-            else:
-                normalized.append(command)
+            normalized.append(_normalize_command(command))
         return normalized
     return value
+
+
+def _normalize_command(command: Any) -> Any:
+    if isinstance(command, str):
+        return shlex.split(command)
+    if isinstance(command, dict):
+        command_value = command.get("command") or command.get("cmd") or command.get("args")
+        return _normalize_command(command_value) if command_value is not None else command
+    return command

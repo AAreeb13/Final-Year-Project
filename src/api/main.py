@@ -158,11 +158,23 @@ def create_app(registry: AgentSystemRegistry | None = None) -> Flask:
 		output = request.get_json(silent=True) or {}
 		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
 		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200
+
+	@app.post("/agent/<agent_id>/tool/<tool_name>")
+	def register_legacy_tool_callback(agent_id: str, tool_name: str) -> tuple[Any, int]:
+		output = request.get_json(silent=True) or {}
+		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
+		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200
 	
 	@app.post("/system/<system_id>/agent/<agent_id>/tool/<tool_name>/output")
 	def receive_tool_output(system_id: str, agent_id: str, tool_name: str) -> tuple[Any, int]:
 		# This is a placeholder endpoint to receive tool outputs from agents.
 		# In a real implementation, you would need to route this to the correct agent instance and handle the output accordingly.
+		output = request.get_json(silent=True) or {}
+		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
+		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200
+
+	@app.post("/agent/<agent_id>/tool/<tool_name>/output")
+	def receive_legacy_tool_output(agent_id: str, tool_name: str) -> tuple[Any, int]:
 		output = request.get_json(silent=True) or {}
 		print(f"Received output from agent '{agent_id}' for tool '{tool_name}': {output}")
 		return jsonify({"status": "received", "agent_id": agent_id, "tool_name": tool_name}), 200

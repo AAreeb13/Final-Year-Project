@@ -4,7 +4,12 @@ import docker
 import pytest
 
 from src.settings import settings
-from src.tools.docker_code_execution.tool import DEFAULT_IMAGE, run_in_container
+from src.tools.docker_code_execution.tool import (
+    DEFAULT_IMAGE,
+    run_in_container,
+    stop_container,
+
+)
 
 
 @pytest.fixture(scope="module")
@@ -34,6 +39,9 @@ def invoke_container(command: list[str], timeout_s: int = 30) -> dict:
             "timeout_s": timeout_s,
         }
     )
+    # stop container
+    stop_container.invoke({})
+    
     return json.loads(raw_output)
 
 
@@ -89,3 +97,18 @@ def test_run_in_container_times_out(docker_client, temp_workplace):
     assert output["status"] == "error"
     assert output["exit_code"] == 124
     assert output["message"] == "Command timed out."
+
+
+def test_stop_container_when_no_container_is_running(docker_client):
+    # This should not raise an exception even if no container is running
+    try:
+        output = stop_container.invoke({})
+        # assert output["status"] == "success"
+        assert type(output) == str, f"Expected output to be a string, got {type(output)}"
+        output = json.loads(output)
+        assert int(output["exit_code"]) == 0, f"Expected exit code 0 when stopping container, got {output}"
+
+        assert output["status"] == "success", f"Expected status 'success' when stopping container, got {output['status']}"
+    except Exception as e:
+        pytest.fail(f"stop_container raised an exception when no container was running: {e}")
+

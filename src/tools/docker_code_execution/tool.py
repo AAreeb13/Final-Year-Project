@@ -2,7 +2,7 @@ import os
 from typing import Sequence
 
 import docker
-from docker.errors import DockerException
+from docker.errors import DockerException, APIError, NotFound
 from docker.models.containers import Container
 from langchain_core.tools import tool
 from pydantic import BaseModel
@@ -13,6 +13,10 @@ from src.tools.tool_schemas import RunInContainerSchema
 
 DEFAULT_IMAGE = "agent-python-git:latest"
 DEFAULT_WORKSPACE_BIND = "/workspace"
+DEFAULT_CONTAINER_ENV = {
+    "HOME": DEFAULT_WORKSPACE_BIND,
+    "PIP_CACHE_DIR": f"{DEFAULT_WORKSPACE_BIND}/.cache/pip",
+}
 
 class DockerCommandOutputSchema(BaseModel):
     """
@@ -24,12 +28,40 @@ class DockerCommandOutputSchema(BaseModel):
     stderr: str
     message: str
 
+@tool
+def stop_container() -> str:
+    """Stop and remove the project Docker container."""
+    container_name = _get_container_name()
+
+    try:
+        _close_container(container_name)
+        return _build_output(
+            status="success",
+            exit_code=0,
+            message=f"Container stopped and removed: {container_name}",
+        )
+
+    except NotFound:
+        return _build_output(
+            status="success",
+            exit_code=0,
+            message=f"Container was not running or did not exist: {container_name}",
+        )
+
+    except Exception as error:
+        return _build_output(
+            status="error",
+            exit_code=None,
+            stderr=str(error),
+            message="Failed to stop the project container.",
+        )
+
 @tool(args_schema=RunInContainerSchema)
 def run_in_container(command: list[str], timeout_s: int = 30) -> str:
-    """Run a command in Docker with the shared workplace mounted.
+    """Run a command inside the project Docker container.
 
-    The command should be provided as a list of strings, e.g. ["python", "script.py"].
-    Returns a JSON string with: status, exit_code, stdout, stderr, and message.
+    Automatically starts the project container if it does not already exist.
+    The container stays running until stop_container is called.
     """
     workspace_path = settings.WORKPLACE_FOLDER
     if workspace_path is None:
@@ -46,24 +78,17 @@ def run_in_container(command: list[str], timeout_s: int = 30) -> str:
             message=f"WORKPLACE_FOLDER path does not exist: {workspace_path}",
         )
 
-    container_id = None
     try:
-        container_id = _start_container(workspace_path)
+        container_id = _get_or_start_container(workspace_path)
         return _run_command_in_container(container_id, command, timeout_s)
     except Exception as error:
+        
         return _build_output(
             status="error",
             exit_code=None,
             stderr=str(error),
             message="Docker command execution failed before the command completed.",
         )
-    finally:
-        if container_id is not None:
-            try:
-                _close_container(container_id)
-            except Exception:
-                pass
-
 
 def _get_client() -> docker.DockerClient:
     try:
@@ -122,9 +147,10 @@ def _format_exec_output(exit_code: int, output: tuple[bytes | None, bytes | None
 
 def _start_container(
     workspace_path: str,
+    container_name: str,
     image: str = DEFAULT_IMAGE,
     memory_limit: str = "256m",
-    container_name: str | None = None,
+    network_enabled: bool = True,
 ) -> str:
     client = _get_client()
     absolute_workspace_path = os.path.abspath(workspace_path)
@@ -141,7 +167,8 @@ def _start_container(
             }
         },
         working_dir=DEFAULT_WORKSPACE_BIND,
-        network_disabled=True,
+        environment=DEFAULT_CONTAINER_ENV,
+        network_disabled=not network_enabled,
         mem_limit=memory_limit,
     )
 
@@ -168,10 +195,58 @@ def _run_command_in_container(
     exit_code, output = container.exec_run(
         cmd=timed_command,
         workdir=DEFAULT_WORKSPACE_BIND,
+        environment=DEFAULT_CONTAINER_ENV,
         demux=True,
     )
 
     return _format_exec_output(exit_code, output)
+
+def _get_container_name() -> str:
+    return getattr(settings, "AGENT_SYSTEM_CONTAINER_NAME", "agent_system_container")
+
+
+def _get_or_start_container(
+    workspace_path: str,
+    image: str = DEFAULT_IMAGE,
+    memory_limit: str = "256m",
+    network_enabled: bool = True,
+) -> str:
+    client = _get_client()
+    container_name = _get_container_name()
+
+    try:
+        container = client.containers.get(container_name)
+
+        if container.status != "running":
+            container.start()
+            container.reload()
+
+        return container.id
+
+    except NotFound:
+        return _start_container(
+            workspace_path=workspace_path,
+            image=image,
+            memory_limit=memory_limit,
+            container_name=container_name,
+            network_enabled=network_enabled,
+        )
+
+    except APIError as error:
+        # Handles a possible race where another process creates the container
+        # between the NotFound check and container creation.
+        if "Conflict" in str(error) or "already in use" in str(error):
+            container = client.containers.get(container_name)
+
+            if container.status != "running":
+                container.start()
+                container.reload()
+
+            return container.id
+
+        raise
+
+
 
 
 if __name__ == "__main__":
@@ -189,12 +264,16 @@ if __name__ == "__main__":
         with open(f"{folder}/test.py", "w") as f:
             f.write(test_file)
 
-    command = ["python", "test.py"]
 
-    try:
+    while True:
         print("Running command in container...")
-        output = run_in_container.invoke({"command": command, "timeout_s": 30})
-        print("Command output:")
-        print(output)
-    except Exception as error:
-        print(f"Error: {error}")
+        command = input("Enter the command to run in the container (or 'exit' to quit): ").strip().split()
+        if command == ["exit"]:
+            break
+        output_json = run_in_container.invoke({"command": command, "timeout_s": 30})
+        print("Output:")
+        print(output_json)
+
+    # Stop the container after testing
+    print("Stopping container...")
+    print(stop_container.invoke({}))
