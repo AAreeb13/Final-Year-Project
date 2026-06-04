@@ -153,6 +153,16 @@ class TestPlan(StrictBaseModel):
     commands: list[str] = Field(default_factory=list)
     testing_framework: str = ""
 
+# ---------------------------------------------------------------------
+# Project Information specification
+# ---------------------------------------------------------------------
+
+class ProjectInfoSpec(StrictBaseModel):
+    project_id: str = ""
+    project_prompt: str = ""
+    project_type: str = ""
+    difficulty: str = ""
+
 
 # ---------------------------------------------------------------------
 # Dataset project specification
