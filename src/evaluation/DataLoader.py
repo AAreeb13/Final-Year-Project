@@ -63,4 +63,4 @@ class DataLoader:
         return datapoints
         
 if __name__ == "__main__":
-    print(DataLoader("/home/areebwsl/Documents/Revolutionising_SWE_dataset").list_datapoints())
+    print(DataLoader("~/Documents/Revolutionising_SWE_dataset").list_datapoints())
