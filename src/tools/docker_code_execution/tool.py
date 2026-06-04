@@ -249,31 +249,45 @@ def _get_or_start_container(
 
 
 
+# if __name__ == "__main__":
+#     print("Testing Docker Code Execution...")
+
+#     folder = settings.WORKPLACE_FOLDER
+#     print("Initializing folder...")
+#     if not os.path.exists(folder):
+#         os.makedirs(folder)
+
+#     test_file = """print("Hello, World!")
+# """
+#     if not os.path.exists(f"{folder}/test.py"):
+#         print("Creating test file...")
+#         with open(f"{folder}/test.py", "w") as f:
+#             f.write(test_file)
+
+
+#     while True:
+#         print("Running command in container...")
+#         command = input("Enter the command to run in the container (or 'exit' to quit): ").strip().split()
+#         if command == ["exit"]:
+#             break
+#         output_json = run_in_container.invoke({"command": command, "timeout_s": 30})
+#         print("Output:")
+#         print(output_json)
+
+#     # Stop the container after testing
+#     print("Stopping container...")
+#     print(stop_container.invoke({}))
+
 if __name__ == "__main__":
-    print("Testing Docker Code Execution...")
-
-    folder = settings.WORKPLACE_FOLDER
-    print("Initializing folder...")
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
-    test_file = """print("Hello, World!")
-"""
-    if not os.path.exists(f"{folder}/test.py"):
-        print("Creating test file...")
-        with open(f"{folder}/test.py", "w") as f:
-            f.write(test_file)
-
 
     while True:
-        print("Running command in container...")
+        print("Testing Docker Code Execution...")
         command = input("Enter the command to run in the container (or 'exit' to quit): ").strip().split()
         if command == ["exit"]:
             break
         output_json = run_in_container.invoke({"command": command, "timeout_s": 30})
         print("Output:")
         print(output_json)
-
-    # Stop the container after testing
-    print("Stopping container...")
-    print(stop_container.invoke({}))
+    print("Exiting...")
+    res = stop_container.invoke({})
+    print("Container stopped:", res)
