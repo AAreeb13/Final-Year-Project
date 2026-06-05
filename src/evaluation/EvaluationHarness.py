@@ -12,10 +12,20 @@ class EvaluationHarness:
         datapoint = self.data_loader.load_datapoint(datapoint_id)
         problem_statement = datapoint.get("project_prompt", "")
         run_config = {
-            # Add any specific configuration for running the system on this datapoint
+            "human_approval": human_approval,
+
         }
-        result = self.system.run(
+        result, run_id = self.system.run(
             problem_statement=problem_statement,
             run_config=run_config,
-            human_approval=human_approval
         )
+        try:
+            self.save_result(result, run_id)
+        except Exception as e:
+            print(f"Error saving result for datapoint {datapoint_id} with run_id {run_id}: {e}")
+        
+    def save_result(self, result, run_id):
+        pass
+    
+
+        

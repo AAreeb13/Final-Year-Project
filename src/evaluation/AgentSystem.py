@@ -7,10 +7,9 @@ class AgentSystem:
     description: str
 
     @abstractmethod
-    def run(self, prompt_id) -> dict[str, Any]:
+    def run(self, prompt_id) -> tuple[dict[str, Any], str]:
         pass
 
     @abstractmethod
     def display_architecture(self) -> None:
         pass
-    

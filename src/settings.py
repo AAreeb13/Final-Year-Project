@@ -1,12 +1,20 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 class Settings(BaseSettings):
-    OPEN_ROUTER_KEY: str
-    GITHUB_PERSONAL_ACCESS_TOKEN: str
-    WORKPLACE_FOLDER: str
-    AGENT_SYSTEM_CONTAINER_NAME: str
+    OPEN_ROUTER_KEY: str | None = None
+    GITHUB_PERSONAL_ACCESS_TOKEN: str | None = None
+    WORKPLACE_FOLDER: str | None = None
+    AGENT_SYSTEM_CONTAINER_NAME: str = "agent_system_container"
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_ENDPOINT: str | None = None
+    LANGSMITH_API_KEY: str | None = None
+    LANGSMITH_PROJECT: str = "final-year-project-single-agent"
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -17,11 +25,7 @@ class Settings(BaseSettings):
         if self.GITHUB_PERSONAL_ACCESS_TOKEN is None:
             print("Warning: GITHUB_PERSONAL_ACCESS_TOKEN is not set. The agent will not be able to use GitHub-related tools.")
         if self.WORKPLACE_FOLDER is None:
-            self.WORKPLACE_FOLDER = input("Enter the path to the workplace folder: ").strip()
-            if not self.WORKPLACE_FOLDER:
-                raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
-        if self.AGENT_SYSTEM_CONTAINER_NAME is None:
-            self.AGENT_SYSTEM_CONTAINER_NAME = "agent_system_container"
+            raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
 
 settings = Settings()
 
