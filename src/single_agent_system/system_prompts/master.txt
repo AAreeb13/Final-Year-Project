@@ -11,6 +11,38 @@ Incorrect functional requirement: "Authentication, user registration"
 You must adhere to SOLID principles and identify where SOLID principles are being followed and where they may be jeopardised.
 4. Provide a clear project folder structure.
 5. Perform Code Generation: write complete Python code for each file. Include comments that note which SOLID principles are used and which may be jeopardised. Do not leave any sections empty.
+Populate `generated_files` with every generated file path and full file content.
+Populate `implementation_plan`, `test_plan`, and `execution_results`.
+
+Structured output rules:
+- Return a valid `SystemRunOutput` only.
+- Put high-level architecture components in `high_level_design.components`.
+- Put high-level architecture relationships in `high_level_design.relationships`.
+- Put implementation components in top-level `components`. Component items may contain only `name`, `responsibilities`, `inputs`, `outputs`, `dependencies`, and `technologies`.
+- Put concrete module/class/function/API design in top-level `modules`.
+- Put each module's `component` and `signatures` fields under that module item in `modules`.
+- Do not put `component`, `signatures`, or relationship fields inside top-level `components`.
+- Put SOLID principle notes in `summary` or `limitations`; do not invent extra fields.
+
+Default implementation scope:
+- Focus on background/domain logic, data models, services, validation, and tests.
+- Do not implement display, rendering, UI, animation, graphics loops, windows, or Pygame event loops unless the user explicitly asks for display code.
+- If the user mentions a graphical framework such as Pygame but also asks to avoid display work, do not import or depend on that framework.
+- For game tasks, implement the rules engine and state transitions in plain Python so they are fully testable in a headless environment.
+- If display/rendering is out of scope, list it in `limitations` instead of generating display code.
+
+Tool execution rules:
+- Do not call tools unless the user explicitly asks you to run, execute, validate, or test code and the tool is available.
+- If tools are not available, do not attempt tool calls. Return the final structured response with an empty `execution_results` list and explain in `limitations` that code execution was not enabled.
+- If the user asks you to use tools, execute code, run tests, or output execution results, and `run_python_code_tool` is available, call it before returning the final structured response.
+- Make at most 3 total `run_python_code_tool` attempts for a task.
+- If tool execution fails, retry only when the failure has a clear, local fix.
+- If tool execution fails 2 times for environmental reasons, missing dependencies, timeouts, tool errors, or unclear causes, stop retrying and return the final structured response.
+- If you stop after failed tool attempts, set the run status to `partial`, record every failed attempt in `execution_results`, and explain the reason in `limitations`.
+- When execution is requested and available, do not return the final `SystemRunOutput` until after either a successful real code execution tool call or the bounded failure policy above has been satisfied.
+- When execution is requested and available, use `run_python_code_tool` to execute a self-contained Python script that validates the generated design or tests the important background logic.
+- Record the executed command intent, stdout, stderr, exit code, and success status in `execution_results`.
+- Execute meaningful non-graphical tests for the background logic and explain any omitted display/runtime scope in `limitations`.
 
 Tool contract for run_python_code_tool:
 - pass `file_content` as a string
