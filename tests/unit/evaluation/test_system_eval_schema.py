@@ -52,6 +52,7 @@ def test_system_run_output_accepts_common_model_shorthand():
                     "name": "updateGame",
                     "component": "Game Engine",
                     "type": "function",
+                    "dependencies": "json",
                     "signatures": [
                         {
                             "type": "function",
@@ -72,3 +73,78 @@ def test_system_run_output_accepts_common_model_shorthand():
     ]
     assert response.modules[0].signatures[0].inputs[0].name == "deltaTime"
     assert response.modules[0].signatures[0].inputs[0].type == ""
+    assert response.modules[0].dependencies == ["json"]
+
+
+def test_system_run_output_drops_extra_fields_and_normalises_nested_shapes():
+    response = SystemRunOutput.model_validate(
+        {
+            "unexpected_top_level": "ignored",
+            "requirements": {
+                "functional": "Add item, Delete item",
+                "extra": "ignored",
+            },
+            "high_level_design": {
+                "components": ["CLI"],
+                "relationships": ["uses"],
+                "technologies": "Python",
+                "extra": "ignored",
+            },
+            "components": [
+                {
+                    "name": "CLI",
+                    "responsibilities": "Handle commands",
+                    "inputs": "argv",
+                    "outputs": "printed output",
+                    "dependencies": "todo_list",
+                    "technologies": "Python",
+                    "extra": "ignored",
+                }
+            ],
+            "repository_structure": {
+                "directories": [
+                    {
+                        "name": "todo_app",
+                        "children": "tests",
+                        "files": [
+                            {
+                                "name": "main.py",
+                                "modules": "main",
+                                "extra": "ignored",
+                            }
+                        ],
+                        "extra": "ignored",
+                    }
+                ],
+                "extra": "ignored",
+            },
+            "implementation_plan": ["Create CLI"],
+            "test_plan": {
+                "unit_tests": "test add, test delete",
+                "commands": "pytest",
+                "extra": "ignored",
+            },
+            "generated_files": [
+                {
+                    "path": "todo_app/main.py",
+                    "content": "print('ok')",
+                    "extra": "ignored",
+                }
+            ],
+            "limitations": "No persistence",
+        }
+    )
+
+    assert response.requirements.functional == ["Add item", "Delete item"]
+    assert response.high_level_design.components[0].name == "CLI"
+    assert response.high_level_design.relationships[0].relationship_type == "uses"
+    assert response.high_level_design.technologies == ["Python"]
+    assert response.components[0].responsibilities == ["Handle commands"]
+    assert response.components[0].dependencies == ["todo_list"]
+    assert response.repository_structure.directories[0].children == ["tests"]
+    assert response.repository_structure.directories[0].files[0].modules == ["main"]
+    assert response.implementation_plan[0].action == "Create CLI"
+    assert response.test_plan.unit_tests == ["test add", "test delete"]
+    assert response.test_plan.commands == ["pytest"]
+    assert response.generated_files[0].path == "todo_app/main.py"
+    assert response.limitations == ["No persistence"]

@@ -35,6 +35,7 @@ class EvaluationHarness:
         datapoint_id: str,
         human_approval: bool = True,
         system_id: int | str | None = None,
+        debug_structured_output: bool = False,
     ):
         print(f"========= Running system {system_id} for datapoint {datapoint_id}.")
 
@@ -44,7 +45,7 @@ class EvaluationHarness:
         run_config = {
             "human_approval": human_approval,
             "allow_tool_execution": False,
-            "debug_structured_output": False,
+            "debug_structured_output": debug_structured_output,
         }
 
         system = self._get_system(system_id)
@@ -74,6 +75,7 @@ class EvaluationHarness:
         self,
         datapoint_id: str,
         human_approval: bool = True,
+        debug_structured_output: bool = False,
     ):
         print()
         print(f"===== Running datapoint {datapoint_id} with registered systems. =====")
@@ -83,31 +85,39 @@ class EvaluationHarness:
                 datapoint_id,
                 human_approval=human_approval,
                 system_id=system_index,
+                debug_structured_output=debug_structured_output,
             )
 
 
-    def run_all_datapoints_with_all_systems(self, human_approval: bool = True):
+    def run_all_datapoints_with_all_systems(
+        self,
+        human_approval: bool = True,
+        debug_structured_output: bool = False,
+    ):
         datapoint_ids = self.data_loader.list_datapoints(id_only=True)
 
         for datapoint_id in datapoint_ids:
             self.run_datapoint_with_all_systems(
                 datapoint_id,
                 human_approval=human_approval,
+                debug_structured_output=debug_structured_output,
             )
 
     def run_all_datapoints_with_system(
         self,
         system_id: int | str = 0,
         human_approval: bool = True,
+        debug_structured_output: bool = False,
     ):
         print("Running all datapoints with system:", system_id)
         datapoint_ids = self.data_loader.list_datapoints(id_only=True)
 
         for datapoint_id in datapoint_ids:
             self.run_datapoint_with_system(
-                datapoint_id,
+                data_point_id=datapoint_id,
                 human_approval=human_approval,
                 system_id=system_id,
+                debug_structured_output=debug_structured_output,
             )
 
     def save_run_artifact(
@@ -285,4 +295,7 @@ if __name__ == "__main__":
     for system in harness.systems:
         system.display_architecture()
 
-    harness.run_all_datapoints_with_all_systems(human_approval=False)
+    harness.run_all_datapoints_with_all_systems(
+        human_approval=False,
+        debug_structured_output=True,
+    )

@@ -13,11 +13,14 @@ class Settings(BaseSettings):
     LANGSMITH_ENDPOINT: str | None = None
     LANGSMITH_API_KEY: str | None = None
     LANGSMITH_PROJECT: str = "final-year-project-single-agent"
+    EVALUATION_DIRECTORY: str | None = None
+    DATASET_DIRECTORY: str | None = None
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.OPEN_ROUTER_KEY is None:
@@ -26,7 +29,10 @@ class Settings(BaseSettings):
             print("Warning: GITHUB_PERSONAL_ACCESS_TOKEN is not set. The agent will not be able to use GitHub-related tools.")
         if self.WORKPLACE_FOLDER is None:
             raise ValueError("WORKPLACE_FOLDER must be set in the .env file")
-
+        if self.EVALUATION_DIRECTORY is None:
+            print("Warning: Evaluation directory not defined hence evaluation unavailable")
+        if self.DATASET_DIRECTORY is None:
+            print("Warning: Dataset not supplied")
 settings = Settings()
 
 if __name__ == "__main__":

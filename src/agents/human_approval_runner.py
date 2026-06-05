@@ -1,7 +1,10 @@
 import json
 
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
+
+
+STRUCTURED_OUTPUT_TOOL_NAMES = {"SystemRunOutput"}
 
 
 def _print_interrupt_requests(interrupt_payload) -> None:
@@ -34,6 +37,25 @@ def _collect_decisions(interrupt_payload) -> dict:
     return {"decisions": decisions}
 
 
+def _print_structured_output_attempts_from_chunk(chunk) -> None:
+    for node_update in chunk.values():
+        if not isinstance(node_update, dict):
+            continue
+
+        for message in node_update.get("messages", []):
+            if not isinstance(message, AIMessage):
+                continue
+
+            for tool_call in getattr(message, "tool_calls", []) or []:
+                if tool_call.get("name") not in STRUCTURED_OUTPUT_TOOL_NAMES:
+                    continue
+
+                print("\nStructured output attempted")
+                print(f"Schema: {tool_call['name']}")
+                print("Args:")
+                print(json.dumps(tool_call.get("args", {}), indent=2))
+
+
 def _print_tool_outputs_from_chunk(chunk) -> None:
     for node_update in chunk.values():
         if not isinstance(node_update, dict):
@@ -41,10 +63,19 @@ def _print_tool_outputs_from_chunk(chunk) -> None:
 
         for message in node_update.get("messages", []):
             if isinstance(message, ToolMessage):
-                print("\nTool executed")
-                print(f"Tool: {message.name}")
-                print("Output:")
-                print(message.content)
+                if message.name in STRUCTURED_OUTPUT_TOOL_NAMES:
+                    print("\nStructured output validation")
+                    print(f"Schema: {message.name}")
+                    if str(message.content).startswith("Returning structured response:"):
+                        print("Result: accepted")
+                    else:
+                        print("Result:")
+                        print(message.content)
+                else:
+                    print("\nTool executed")
+                    print(f"Tool: {message.name}")
+                    print("Output:")
+                    print(message.content)
 
 
 def _extract_interrupts_from_chunk(chunk):
@@ -58,7 +89,12 @@ def _extract_interrupts_from_chunk(chunk):
     return None
 
 
-def run_with_human_approval(agent, user_input: str, config: dict) -> dict:
+def run_with_human_approval(
+    agent,
+    user_input: str,
+    config: dict,
+    debug_structured_output: bool = False,
+) -> dict:
     stream_input = {"messages": [HumanMessage(content=user_input)]}
 
     while True:
@@ -76,6 +112,8 @@ def run_with_human_approval(agent, user_input: str, config: dict) -> dict:
                 interrupted = True
                 break
 
+            if debug_structured_output:
+                _print_structured_output_attempts_from_chunk(chunk)
             _print_tool_outputs_from_chunk(chunk)
 
         if not interrupted:
