@@ -45,7 +45,7 @@ class DataLoader:
                 continue
         raise ValueError(f"Datapoint with ID '{datapoint_id}' not found in dataset.")
     
-    def list_datapoints(self):
+    def list_datapoints(self, id_only: bool = False) -> list[dict[str, str]] | list[str]:
         dataset_path = self.data_path / "dataset"
         datapoints = []
         folders_in_dataset = [f for f in dataset_path.iterdir() if f.is_dir()]
@@ -60,6 +60,9 @@ class DataLoader:
                 })
             except Exception as e:
                 continue
+
+        if id_only:
+            return [dp.get("project_id") for dp in datapoints]
         return datapoints
         
 if __name__ == "__main__":
