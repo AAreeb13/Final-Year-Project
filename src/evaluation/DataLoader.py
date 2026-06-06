@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.evaluation.helper import load_yaml_file
+from src.evaluation.helper import build_project_spec_from_yaml, load_yaml_file
 
 
 class DataLoader:
@@ -64,6 +64,14 @@ class DataLoader:
         if id_only:
             return [dp.get("project_id") for dp in datapoints]
         return datapoints
-        
+    def retrieve_full_datapoint(self, datapoint_id):
+        if datapoint_id in self.list_datapoints(id_only=True):
+            # return self.load_datapoint(datapoint_id)
+            ...
+            return build_project_spec_from_yaml(datapoint_id)
+        else:
+            raise ValueError(f"Datapoint with ID '{datapoint_id}' not found in dataset.")
+
 if __name__ == "__main__":
     print(DataLoader("~/Documents/Revolutionising_SWE_dataset").list_datapoints())
+    print(DataLoader("~/Documents/Revolutionising_SWE_dataset").retrieve_full_datapoint("snake_game"))
