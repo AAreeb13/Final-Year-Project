@@ -184,3 +184,17 @@ class ProjectSpec(StrictBaseModel):
     repository_structure: RepositoryStructure = Field(default_factory=RepositoryStructure)
     implementation_plan: list[ImplementationStep] = Field(default_factory=list)
     test_plan: TestPlan = Field(default_factory=TestPlan)
+
+    def __str__(self):
+        # Create a human-readable string representation of the project specification
+        return (f"Project ID: {self.project_id}\n"
+                f"Prompt: {self.project_prompt}\n"
+                f"Type: {self.project_type}\n"
+                f"Difficulty: {self.difficulty}\n"
+                f"Requirements: {len(self.requirements.functional) + len(self.requirements.non_functional)} total\n"
+                f"Components: {len(self.components)}\n"
+                f"Modules: {len(self.modules)}\n"
+                f"Repository Directories: {len(self.repository_structure.directories)}\n"
+                f"Implementation Steps: {len(self.implementation_plan)}\n"
+                f"Test Plan: {len(self.test_plan.unit_tests) + len(self.test_plan.integration_tests)} tests\n"
+        )
