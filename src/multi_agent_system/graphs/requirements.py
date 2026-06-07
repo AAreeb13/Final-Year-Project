@@ -23,33 +23,19 @@ RequirementsStatus = Literal["complete", "waiting_for_user"]
 AgentRunner = Callable[[Any, BaseModel], Any]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+from typing import TypedDict, List
 
-EXTRACTOR_PROMPT = """
-You are the Requirements Extractor Agent for a software SDLC multi-agent system.
+class InternalMetrics(TypedDict):
+    number_of_iterations: int
+    number_of_questions_asked_per_iteration: List[int] # Or just list
 
-Extract a clean requirements artifact from the project prompt. If previous
-requirements and question-answer context are provided, update the requirements
-using that context instead of duplicating it in notes.
+# import  txt file
+def load_txt_file(file_path: str) -> str:
+    with open(file_path, 'r') as file:
+        return file.read()
 
-Return the structured RequirementsExtractorOutput only.
-""".strip()
-
-
-CRITIC_PROMPT = """
-You are Critic A for the requirements stage of a software SDLC multi-agent system.
-
-Review the extracted requirements against the original project prompt and any
-question-answer context.
-
-Approve only when:
-- functional and non-functional requirements are explicit enough to design from
-- assumptions have either been removed or turned into answered context
-- constraints are concrete
-- out-of-scope items are clear
-
-If you are not sure, set approved=false and return concise user-facing questions.
-Return the structured RequirementsCriticOutput only.
-""".strip()
+CRITIC_PROMPT = load_txt_file("src/multi_agent_system/prompts/RequirementsCritic.txt").strip()
+EXTRACTOR_PROMPT = load_txt_file("src/multi_agent_system/prompts/RequirementsExtractor.txt").strip()
 
 
 class RequirementsState(TypedDict, total=False):
@@ -82,7 +68,9 @@ class RequirementsStageGraph:
         critic_runner: AgentRunner | None = None,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.2,
+        max_iterations: int = 0,
     ) -> None:
+        print("Initializing RequirementsStageGraph...")
         self.extractor_agent = extractor_agent
         self.critic_agent = critic_agent
         self.extractor_runner = extractor_runner or _run_structured_agent
@@ -90,6 +78,10 @@ class RequirementsStageGraph:
         self.model_name = model_name
         self.temperature = temperature
         self.graph = self._build_requirement_graph()
+        self.internal_metrics: InternalMetrics = {
+            "number_of_iterations": 0,
+            "number_of_questions_asked_per_iteration": [],}
+        self.max_iterations = max_iterations
 
     def run(
         self,
@@ -97,6 +89,7 @@ class RequirementsStageGraph:
         previous_requirements: RequirementsSpec | None = None,
         question_answer_context: list[QuestionAnswer] | None = None,
     ) -> RequirementsRunResult:
+        print("Running RequirementsStageGraph...")
         initial_state: RequirementsState = {
             "project_prompt": project_prompt,
             "previous_requirements": previous_requirements,
@@ -106,6 +99,7 @@ class RequirementsStageGraph:
         return self._to_result(final_state)
 
     def _build_requirement_graph(self):
+        print("Building requirements graph...")
         graph_builder = StateGraph(RequirementsState)
         graph_builder.add_node("extract_requirements", self.extract_requirements)
         graph_builder.add_node("critic_review", self.critic_review)
@@ -129,6 +123,8 @@ class RequirementsStageGraph:
         return graph
 
     def extract_requirements(self, state: RequirementsState) -> RequirementsState:
+        print("Node: extract_requirements")
+        self.internal_metrics["number_of_iterations"] += 1
         extractor_input = RequirementsExtractorInput(
             project_prompt=state["project_prompt"],
             previous_requirements=state.get("previous_requirements"),
@@ -146,6 +142,7 @@ class RequirementsStageGraph:
         }
 
     def critic_review(self, state: RequirementsState) -> RequirementsState:
+        print("Node: critic_review")
         extractor_output = state["extractor_output"]
         critic_input = RequirementsCriticInput(
             project_prompt=state["project_prompt"],
@@ -157,6 +154,11 @@ class RequirementsStageGraph:
             critic_input,
         )
         critic_output = _coerce_model(raw_output, RequirementsCriticOutput)
+        self.internal_metrics["number_of_questions_asked_per_iteration"].append(len(critic_output.questions))
+        if self.internal_metrics["number_of_iterations"] > self.max_iterations:
+            print("Warning: Number of iterations exceeded {}. Current state:", self.max_iterations, state)
+            print("Forcefully approving to prevent infinite loop.")
+            critic_output.approved = True
         return {
             **state,
             "critic_output": critic_output,
@@ -164,13 +166,18 @@ class RequirementsStageGraph:
 
     @staticmethod
     def route_after_critic(state: RequirementsState) -> str:
+        print("Node: route_after_critic")
         critic_output = state["critic_output"]
+        print("Critic approved?", critic_output.approved)
+
+
         if critic_output.approved:
             return "complete"
         return "waiting_for_user"
 
     @staticmethod
     def complete(state: RequirementsState) -> RequirementsState:
+        print("Node: complete")
         extractor_output = state["extractor_output"]
         critic_output = state["critic_output"]
         stage_output = RequirementsStageOutput(
@@ -179,14 +186,18 @@ class RequirementsStageGraph:
             critic_verdict=critic_output.verdict,
             approved=True,
         )
-        return {
+        res = {
             **state,
             "stage_output": stage_output,
             "status": "complete",
         }
+        RequirementsStageGraph.print_final_output(res)
+        return res
+
 
     @staticmethod
     def waiting_for_user(state: RequirementsState) -> RequirementsState:
+        print("Node: waiting_for_user")
         extractor_output = state["extractor_output"]
         critic_output = state["critic_output"]
         stage_output = RequirementsStageOutput(
@@ -203,6 +214,8 @@ class RequirementsStageGraph:
 
     def _get_extractor_agent(self) -> Any:
         if self.extractor_agent is None:
+            print("Initializing extractor agent...")
+
             self.extractor_agent = AgentFactory.build_agent(
                 prompt=EXTRACTOR_PROMPT,
                 tools=[],
@@ -214,6 +227,8 @@ class RequirementsStageGraph:
 
     def _get_critic_agent(self) -> Any:
         if self.critic_agent is None:
+            print("Initializing critic agent...")
+
             self.critic_agent = AgentFactory.build_agent(
                 prompt=CRITIC_PROMPT,
                 tools=[],
@@ -235,7 +250,16 @@ class RequirementsStageGraph:
             stage_output=state.get("stage_output"),
             questions=critic_output.questions if critic_output else [],
         )
-
+    @staticmethod
+    def print_final_output(state: RequirementsState) -> None:
+        print("\nFinal Output:")
+        print("Status:", state.get("status"))
+        if "stage_output" in state:
+            stage_output = state["stage_output"]
+            print("Approved:", stage_output.approved)
+            print("Critic Verdict:", stage_output.critic_verdict)
+            print("Extracted Requirements:", stage_output.requirements)
+            print("Question-Answer Context:", stage_output.question_answer_context)
 
 def build_requirements_graph(**kwargs: Any) -> RequirementsStageGraph:
     return RequirementsStageGraph(**kwargs)
