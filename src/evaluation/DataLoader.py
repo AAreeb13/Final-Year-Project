@@ -37,7 +37,6 @@ class DataLoader:
             # load project_info.yaml and check if the id matches
             try:
                 project_info = load_yaml_file(f / "project_info.yaml")
-                print(project_info)
                 if project_info.get("project_id") == datapoint_id:
                     self.data_point_paths.append(f)
                     return project_info
@@ -66,9 +65,10 @@ class DataLoader:
         return datapoints
     def retrieve_full_datapoint(self, datapoint_id):
         if datapoint_id in self.list_datapoints(id_only=True):
-            # return self.load_datapoint(datapoint_id)
-            ...
-            return build_project_spec_from_yaml(datapoint_id)
+            return build_project_spec_from_yaml(
+                datapoint_id,
+                dataset_dir=self.data_path,
+            )
         else:
             raise ValueError(f"Datapoint with ID '{datapoint_id}' not found in dataset.")
 

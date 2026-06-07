@@ -1,6 +1,18 @@
 from pathlib import Path
-from typing import Dict, TypedDict
-from src.settings import settings
+from typing import Any
+
+from src.evaluation.sdlc_eval_schema import (
+    ComponentSpec,
+    GraphDependencySpec,
+    HLArchitectureSpec,
+    ImplementationStep,
+    ModuleSpec,
+    ProjectInfoSpec,
+    ProjectSpec,
+    RepositoryStructure,
+    RequirementsSpec,
+    TestPlan,
+)
 
 
 def load_yaml_file(file_path: Path) -> dict:
@@ -21,44 +33,6 @@ def load_yaml_file(file_path: Path) -> dict:
     except Exception as e:
         raise ValueError(f"Unexpected error loading YAML file at {file_path}: {str(e)}") from e
 
-# design.yaml                 modules.yaml               requirements.yaml
-# graph_dependency_spec.yaml  project_info.yaml
-# implementation_plan.yaml    repository_structure.yaml
-class FileNames(dict):
-    PROJECT_INFO = "project_info.yaml"
-    DESIGN = "design.yaml"
-    REQUIREMENTS = "requirements.yaml"
-    IMPLEMENTATION_PLAN = "implementation_plan.yaml"
-    REPOSITORY_STRUCTURE = "repository_structure.yaml"
-    GRAPH_DEPENDENCY_SPEC = "graph_dependency_spec.yaml"
-    MODULES = "modules.yaml"
-    TEST_PLAN = "test_plan.yaml"
-
-    def __init__(self):
-        # Pull all uppercase class attributes into the dict instance
-        for key, value in self.__class__.__dict__.items():
-            if key.isupper():
-                self[key] = value
-
-from pathlib import Path
-from typing import Any
-
-from src.settings import settings
-from src.evaluation.helper import load_yaml_file
-from src.evaluation.sdlc_eval_schema import (
-    ProjectSpec,
-    ProjectInfoSpec,
-    RequirementsSpec,
-    HLArchitectureSpec,
-    ComponentSpec,
-    ModuleSpec,
-    GraphDependencySpec,
-    RepositoryStructure,
-    ImplementationStep,
-    TestPlan,
-)
-
-
 class FileNames(dict):
     PROJECT_INFO = "project_info.yaml"
     DESIGN = "design.yaml"
@@ -76,17 +50,27 @@ class FileNames(dict):
                 self[key] = value
 
 
-def collate_project_yaml(project_id: str) -> dict[str, Any]:
+def collate_project_yaml(
+    project_id: str,
+    dataset_dir: str | Path | None = None,
+    *,
+    warn_missing: bool = False,
+) -> dict[str, Any]:
     """
     Loads all YAML files for a dataset project folder.
 
     Returns raw loaded data keyed by FileNames keys.
     """
-    if settings.DATASET_DIRECTORY is None:
-        raise ValueError("DATASET_DIRECTORY must be set in the .env file")
+    if dataset_dir is None:
+        from src.settings import settings
+
+        if settings.DATASET_DIRECTORY is None:
+            raise ValueError("DATASET_DIRECTORY must be set in the .env file")
+        dataset_dir = settings.DATASET_DIRECTORY
 
     file_names = FileNames()
-    project_dir = Path(settings.DATASET_DIRECTORY) / "dataset" / project_id
+    dataset_root = Path(dataset_dir).expanduser().resolve()
+    project_dir = dataset_root / "dataset" / project_id
 
     if not project_dir.exists():
         raise ValueError(f"Project directory does not exist: {project_dir}")
@@ -99,18 +83,29 @@ def collate_project_yaml(project_id: str) -> dict[str, Any]:
         try:
             project_data[name] = load_yaml_file(file_path)
         except ValueError as e:
-            print(f"Warning: {str(e)}. Skipping file: {file_path}")
+            if warn_missing:
+                print(f"Warning: {str(e)}. Skipping file: {file_path}")
             project_data[name] = None
 
     return project_data
 
 
-def build_project_spec_from_yaml(project_id: str) -> ProjectSpec:
+def build_project_spec_from_yaml(
+    project_id: str,
+    dataset_dir: str | Path | None = None,
+    *,
+    debug: bool = False,
+    warn_missing: bool = False,
+) -> ProjectSpec:
     """
     Converts separate YAML files inside one dataset project folder into
     a single validated ProjectSpec.
     """
-    raw = collate_project_yaml(project_id)
+    raw = collate_project_yaml(
+        project_id,
+        dataset_dir=dataset_dir,
+        warn_missing=warn_missing,
+    )
 
     project_info_data = _unwrap(
         raw.get("PROJECT_INFO"),
@@ -180,7 +175,7 @@ def build_project_spec_from_yaml(project_id: str) -> ProjectSpec:
         ),
 
         components=_validate_list(components_data, ComponentSpec),
-        modules=_validate_modules(modules_data),
+        modules=_validate_modules(modules_data, debug=debug),
         module_dependency_graph=GraphDependencySpec.model_validate(
             _normalise_graph_dependency_spec(graph_data)
         ),
@@ -522,14 +517,14 @@ def _debug_print(title: str, data: Any) -> None:
     except Exception:
         print(data)
 
-def _validate_modules(data: Any) -> list[ModuleSpec]:
+def _validate_modules(data: Any, *, debug: bool = False) -> list[ModuleSpec]:
     """
     Normalises and validates module YAML.
 
     Handles:
     - signatures: dict -> signatures: [dict]
     - removes unsupported module fields such as technologies
-    - prints useful debugging information if validation fails
+    - optionally prints useful debugging information
     """
     if data is None:
         return []
@@ -550,7 +545,8 @@ def _validate_modules(data: Any) -> list[ModuleSpec]:
     allowed_module_fields = set(ModuleSpec.model_fields)
 
     for index, raw_module in enumerate(data):
-        _debug_print(f"Raw module before normalisation [{index}]", raw_module)
+        if debug:
+            _debug_print(f"Raw module before normalisation [{index}]", raw_module)
 
         if not isinstance(raw_module, dict):
             raise ValueError(
@@ -567,17 +563,19 @@ def _validate_modules(data: Any) -> list[ModuleSpec]:
                 removed_fields[key] = module.pop(key)
 
         if removed_fields:
-            _debug_print(
-                f"Removed unsupported fields from module [{index}]",
-                removed_fields,
-            )
+            if debug:
+                _debug_print(
+                    f"Removed unsupported fields from module [{index}]",
+                    removed_fields,
+                )
 
         # Convert signatures from a single dict into a list.
         if "signatures" in module and isinstance(module["signatures"], dict):
-            print(
-                f"Normalising module [{index}] signatures: "
-                "dict -> list[dict]"
-            )
+            if debug:
+                print(
+                    f"Normalising module [{index}] signatures: "
+                    "dict -> list[dict]"
+                )
             module["signatures"] = [module["signatures"]]
 
         # Ensure missing signatures becomes empty list.
@@ -589,13 +587,15 @@ def _validate_modules(data: Any) -> list[ModuleSpec]:
             for sig_index, signature in enumerate(module["signatures"])
         ]
 
-        _debug_print(f"Module after normalisation [{index}]", module)
+        if debug:
+            _debug_print(f"Module after normalisation [{index}]", module)
 
         try:
             validated_module = ModuleSpec.model_validate(module)
             validated_modules.append(validated_module)
         except Exception as exc:
-            _debug_print(f"FAILED module validation [{index}]", module)
+            if debug:
+                _debug_print(f"FAILED module validation [{index}]", module)
             print(f"Validation error for module [{index}]: {exc}")
             raise
 

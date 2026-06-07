@@ -114,7 +114,7 @@ class EvaluationHarness:
 
         for datapoint_id in datapoint_ids:
             self.run_datapoint_with_system(
-                data_point_id=datapoint_id,
+                datapoint_id=datapoint_id,
                 human_approval=human_approval,
                 system_id=system_id,
                 debug_structured_output=debug_structured_output,

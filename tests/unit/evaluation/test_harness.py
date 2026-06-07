@@ -1,4 +1,11 @@
 import pytest
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from src.evaluation.EvaluationHarness import EvaluationHarness
 from src.evaluation.DataLoader import DataLoader
 from src.evaluation.AgentSystem import AgentSystemRunner
@@ -67,4 +74,3 @@ def test_save_run_artifact_creates_eval_directory(tmp_path):
 
     saved = output_path.read_text(encoding="utf-8")
     assert "hello" in saved
-
