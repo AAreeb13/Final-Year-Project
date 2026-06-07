@@ -515,7 +515,7 @@ class AgentSystemMediumGraph:
 
     def _get_supervisor_agent(self) -> Any:
         if self.supervisor_agent is None:
-            from src.agents.supervisor.agent import build_supervisor_agent
+            from src.agents.supervisor_medium.agent import build_supervisor_agent
 
             self.supervisor_agent = build_supervisor_agent()
         return self.supervisor_agent

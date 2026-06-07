@@ -2,32 +2,27 @@ import subprocess
 from pathlib import Path
 from typing import TypedDict
 
-class GitCLIError(Exception):
-    pass
-
-class GitOutput(TypedDict):
-    command: str
-    exit_code: int
-    stdout: str
-    stderr: str
-    success: bool
-
+from src.tools.git_tooling.command_line.helper import GitCLIError, GitOutput
+from src.settings import settings
 
 class GitCLI:
 
-    def __init__(self, repo_path):
-        self.repo_path = Path(repo_path).resolve()
+    def __init__(self, repo_name: str):
+
+        workplace_folder = Path(settings.WORKPLACE_FOLDER).resolve()
+
+        self.repo_path = (workplace_folder / repo_name)
+
+        self.repo_path = Path(repo_name).resolve()
         if not self.repo_path.is_dir():
-            raise GitCLIError(f"Provided path '{repo_path}' is not a directory.")
+            raise GitCLIError(f"Provided path '{repo_name}' is not a directory.")
 
         if not (self.repo_path / ".git").exists():
-            raise GitCLIError(f"Provided path '{repo_path}' is not a git repository.")
+            raise GitCLIError(f"Provided path '{repo_name}' is not a git repository.")
         
         # check if the repo_path is inside the workplace folder
-        from src.settings import settings
-        workplace_folder = Path(settings.WORKPLACE_FOLDER).resolve()
         if not self.repo_path.is_relative_to(workplace_folder):
-            raise GitCLIError(f"Provided repository path '{repo_path}' is not inside the workplace folder '{workplace_folder}'.")
+            raise GitCLIError(f"Provided repository path '{repo_name}' is not inside the workplace folder '{workplace_folder}'.")
     
 
     def _run_git_command(self, args: list[str], timeout: int = 30) -> GitOutput:
@@ -52,12 +47,12 @@ class GitCLI:
             raise GitCLIError(f"Git command timed out: {' '.join(['git'] + args)}") from e
 
             # return GitOutput(command=" ".join(["git"] + args), exit_code=-1, stdout="",
-            #     stderr=f"Git command timed out after {timeout} seconds.", success=False
+                # stderr=f"Git command timed out after {timeout} seconds.", success=False
             # )
         except Exception as e:
             raise GitCLIError(f"Error running git command: {' '.join(['git'] + args)}") from e
             # return GitOutput(command=" ".join(["git"] + args), exit_code=-1, stdout="", 
-            #      stderr=f"Unexpected error occurred.{str(e)}", success=False
+                #  stderr=f"Unexpected error occurred.{str(e)}", success=False
             # )
 
     def status(self) -> GitOutput:
@@ -76,6 +71,7 @@ class GitCLI:
         if branch_result.get("stdout", "").strip():
             return branch_result
         return self._run_git_command(["branch", branch_name])
+    
     def log(self, limit: int = 10, oneline: bool = True) -> GitOutput:
         args = ["log", f"--max-count={limit}"]
         if oneline:

@@ -9,12 +9,17 @@ You should:
 - mention key inputs, outputs, state, and parameters where appropriate
 - assess where SOLID principles are being followed and where they may be jeopardised
 
+Return a valid `SystemRunOutput`.
+
 Populate these fields:
-- `components`: the main parts of the system
-- `relationships`: how the components interact
-- `system_design`: specific design decisions, such as classes, functions, responsibilities, data flow, and important parameters
-- `solid_principles_used`
-- `solid_principles_jeopardised`
+- `requirements`: include only requirements that are stated or strongly implied by the problem statement.
+- `high_level_design.style`: the architecture style, if clear.
+- `high_level_design.components`: high-level architecture components. Each item may contain only `name`, `type`, and `responsibilities`.
+- `high_level_design.relationships`: how the high-level components interact. Each item may contain only `source`, `target`, and `relationship_type`.
+- `components`: implementation components. Each item may contain only `name`, `responsibilities`, `inputs`, `outputs`, `dependencies`, and `technologies`.
+- `modules`: concrete modules/classes/functions/APIs. Each item may contain `name`, `component`, `type`, `responsibilities`, `dependencies`, and `signatures`.
+- `modules[].signatures`: function, class, method, schema, interface, or API endpoint signatures. Do not put `signatures` inside `components`.
+- `summary`: include the SOLID assessment here, including principles followed and any risks.
 
 Do not generate code.
 Leave every other response field empty.
