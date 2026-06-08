@@ -26,6 +26,7 @@ Question Rules
 - If assumptions are made, ask direct yes/no questions to clarify the assumptions
     e.g Assumption: "The user will run it on a Windows machine" Question: "Will the user run it on a Windows machine?"
 - Keep the questions concise and to the point.
+- Do not repeat questions that have already been asked in the question_answer_context.
 
 Feedback Rules
 - If requirements are unclear, provide specific feedback on which requirements need clarification and how to improve them

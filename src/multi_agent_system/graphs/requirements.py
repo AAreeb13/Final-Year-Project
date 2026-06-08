@@ -46,6 +46,15 @@ class RequirementsState(TypedDict, total=False):
     critic_output: RequirementsCriticOutput
     stage_output: RequirementsStageOutput
     status: RequirementsStatus
+    def __str__(self):        return (
+            f"Project Prompt: {self.project_prompt}\n\n" +
+            f"Previous Requirements: \n{self.previous_requirements}\n\n" +
+            f"Question-Answer Context: \n{self.question_answer_context}\n\n" +
+            f"Extractor Output: \n{self.extractor_output}\n\n" +
+            f"Critic Output: \n{self.critic_output}\n\n" +
+            f"Stage Output: \n{self.stage_output}\n\n" +
+            f"Status: {self.status}"
+        )
 
 
 class RequirementsRunResult(BaseModel):
@@ -55,6 +64,16 @@ class RequirementsRunResult(BaseModel):
     critic_output: RequirementsCriticOutput | None = None
     stage_output: RequirementsStageOutput | None = None
     questions: list[str] = Field(default_factory=list)
+
+    def __str__(self):
+        return (
+            f"Status: {self.status}\n\n" +
+            f"Requirements: \n{self.requirements}\n\n" +
+            f"Question-Answer Context: {self.question_answer_context}\n\n" +
+            f"Critic Output: {self.critic_output}\n\n" +
+            f"Stage Output: {self.stage_output}\n\n" +
+            f"Questions from Critic: {self.questions}"
+        )
 
 
 class RequirementsStageGraph:
@@ -68,7 +87,7 @@ class RequirementsStageGraph:
         critic_runner: AgentRunner | None = None,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.2,
-        max_iterations: int = 0,
+        max_iterations: int = 5,
     ) -> None:
         print("Initializing RequirementsStageGraph...")
         self.extractor_agent = extractor_agent
@@ -119,7 +138,7 @@ class RequirementsStageGraph:
         graph_builder.add_edge("complete", END)
         graph_builder.add_edge("waiting_for_user", END)
         graph = graph_builder.compile()
-        print(graph)
+    
         return graph
 
     def extract_requirements(self, state: RequirementsState) -> RequirementsState:
@@ -135,6 +154,8 @@ class RequirementsStageGraph:
             extractor_input,
         )
         extractor_output = _coerce_model(raw_output, RequirementsExtractorOutput)
+        print("*"*20)
+        print("Extracted Requirements:", extractor_output.requirements)
         return {
             **state,
             "extractor_output": extractor_output,
@@ -156,7 +177,8 @@ class RequirementsStageGraph:
         critic_output = _coerce_model(raw_output, RequirementsCriticOutput)
         self.internal_metrics["number_of_questions_asked_per_iteration"].append(len(critic_output.questions))
         if self.internal_metrics["number_of_iterations"] > self.max_iterations:
-            print("Warning: Number of iterations exceeded {}. Current state:", self.max_iterations, state)
+            print("=========================\nWarning: Number of iterations exceeded. Max iterations:", self.max_iterations)
+            print("=========================")
             print("Forcefully approving to prevent infinite loop.")
             critic_output.approved = True
         return {
@@ -191,7 +213,8 @@ class RequirementsStageGraph:
             "stage_output": stage_output,
             "status": "complete",
         }
-        RequirementsStageGraph.print_final_output(res)
+        # print("Final state at complete node:", state)
+        print("Keys in state at complete node:", list(state.keys()))
         return res
 
 
