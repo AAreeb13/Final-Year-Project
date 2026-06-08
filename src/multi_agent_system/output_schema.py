@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class RequirementsSpec(BaseModel):
@@ -80,3 +82,195 @@ class RequirementsStageOutput(BaseModel):
             f"Critic Verdict: {self.critic_verdict}\n\n" +
             f"Approved: {self.approved}"
         )
+
+
+DesignTaskKind = Literal[
+    "extract_components",
+    "decompose_component",
+    "design_modules",
+]
+
+
+class DesignTask(BaseModel):
+    kind: DesignTaskKind
+    target_component: str | None = None
+    target_module: str | None = None
+
+    @model_validator(mode="after")
+    def validate_target_component(self):
+        if self.kind in {"decompose_component", "design_modules"} and not self.target_component:
+            raise ValueError(f"target_component is required for {self.kind}")
+        return self
+
+
+class HLComponentSpec(BaseModel):
+    name: str = ""
+    type: str = ""
+    responsibilities: list[str] = Field(default_factory=list)
+
+
+class RelationshipSpec(BaseModel):
+    source: str = ""
+    target: str = ""
+    relationship_type: str = ""
+
+
+class HLArchitectureSpec(BaseModel):
+    style: str | None = None
+    components: list[HLComponentSpec] = Field(default_factory=list)
+    relationships: list[RelationshipSpec] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
+
+
+class ComponentSpec(BaseModel):
+    name: str = ""
+    responsibilities: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    technologies: list[str] = Field(default_factory=list)
+
+
+SignatureType = Literal[
+    "function",
+    "class",
+    "method",
+    "schema",
+    "interface",
+    "api_endpoint",
+]
+
+
+class ParamSpec(BaseModel):
+    name: str = ""
+    type: str = ""
+    required: bool = True
+    default: str | None = None
+    description: str | None = None
+
+
+class SignatureSpec(BaseModel):
+    type: SignatureType = "function"
+    name: str = ""
+    inputs: list[ParamSpec] = Field(default_factory=list)
+    output: str = ""
+    description: str = ""
+    belongs_to: str | None = None
+
+
+class ModuleSpec(BaseModel):
+    name: str = ""
+    component: str = ""
+    type: str | None = None
+    responsibilities: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    signatures: list[SignatureSpec] = Field(default_factory=list)
+
+
+class GraphDependencyEdgeSpec(BaseModel):
+    source: str = ""
+    target: str = ""
+
+
+class GraphDependencySpec(BaseModel):
+    nodes: list[str] = Field(default_factory=list)
+    edges: list[GraphDependencyEdgeSpec] = Field(default_factory=list)
+
+
+class ComponentExtractionOutput(BaseModel):
+    high_level_architecture: HLArchitectureSpec = Field(default_factory=HLArchitectureSpec)
+    components: list[ComponentSpec] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ComponentDecompositionOutput(BaseModel):
+    component: ComponentSpec = Field(default_factory=ComponentSpec)
+    modules: list[ModuleSpec] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ModuleDesignOutput(BaseModel):
+    component_name: str = ""
+    modules: list[ModuleSpec] = Field(default_factory=list)
+    dependency_graph: GraphDependencySpec = Field(default_factory=GraphDependencySpec)
+    notes: list[str] = Field(default_factory=list)
+
+
+class ArchitectInput(BaseModel):
+    project_prompt: str
+    requirements: RequirementsStageOutput
+    task: DesignTask
+    previous_design_output: "DesignStageOutput | None" = None
+    question_answer_context: list[QuestionAnswer] = Field(default_factory=list)
+    critic_feedback: str = ""
+
+
+class ArchitectOutput(BaseModel):
+    task: DesignTask | None = None
+    component_extraction: ComponentExtractionOutput | None = None
+    component_decomposition: ComponentDecompositionOutput | None = None
+    module_design: ModuleDesignOutput | None = None
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_matching_artifact(self):
+        artifact_fields = {
+            "extract_components": self.component_extraction,
+            "decompose_component": self.component_decomposition,
+            "design_modules": self.module_design,
+        }
+        populated_count = sum(artifact is not None for artifact in artifact_fields.values())
+        if populated_count != 1:
+            raise ValueError("ArchitectOutput must populate exactly one design artifact field")
+        if self.task is None:
+            return self
+        expected_artifact = artifact_fields[self.task.kind]
+        if expected_artifact is None:
+            raise ValueError(f"{self.task.kind} output must populate its matching artifact field")
+        return self
+
+
+class DesignCriticInput(BaseModel):
+    project_prompt: str
+    requirements: RequirementsStageOutput
+    task: DesignTask
+    architect_output: ArchitectOutput
+    question_answer_context: list[QuestionAnswer] = Field(default_factory=list)
+
+
+class DesignCriticOutput(BaseModel):
+    approved: bool = False
+    verdict: str = ""
+    questions: list[str] = Field(default_factory=list)
+    feedback: str = ""
+    required_changes: list[str] = Field(default_factory=list)
+
+
+class DesignStageOutput(BaseModel):
+    task: DesignTask
+    architect_output: ArchitectOutput
+    question_answer_context: list[QuestionAnswer] = Field(default_factory=list)
+    critic_verdict: str
+    approved: bool
+
+    @property
+    def component_extraction(self) -> ComponentExtractionOutput | None:
+        return self.architect_output.component_extraction
+
+    @property
+    def component_decomposition(self) -> ComponentDecompositionOutput | None:
+        return self.architect_output.component_decomposition
+
+    @property
+    def module_design(self) -> ModuleDesignOutput | None:
+        return self.architect_output.module_design
+
+
+class ProjectStore(BaseModel):
+    project_id: str
+    project_prompt: str
+    requirements: RequirementsStageOutput | None = None
+    component_extraction: ComponentExtractionOutput | None = None
+    component_decompositions: dict[str, ComponentDecompositionOutput] = Field(default_factory=dict)
+    module_designs: dict[str, ModuleDesignOutput] = Field(default_factory=dict)
+    stage_statuses: dict[str, str] = Field(default_factory=dict)

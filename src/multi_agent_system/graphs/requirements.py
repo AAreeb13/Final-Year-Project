@@ -19,7 +19,7 @@ from src.multi_agent_system.output_schema import (
 )
 
 
-RequirementsStatus = Literal["complete", "waiting_for_user"]
+RequirementsStatus = Literal["complete", "waiting_for_user", "failed"]
 AgentRunner = Callable[[Any, BaseModel], Any]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -46,6 +46,8 @@ class RequirementsState(TypedDict, total=False):
     critic_output: RequirementsCriticOutput
     stage_output: RequirementsStageOutput
     status: RequirementsStatus
+    failure_reason: str
+    force_continue_reason: str
     def __str__(self):        return (
             f"Project Prompt: {self.project_prompt}\n\n" +
             f"Previous Requirements: \n{self.previous_requirements}\n\n" +
@@ -64,6 +66,7 @@ class RequirementsRunResult(BaseModel):
     critic_output: RequirementsCriticOutput | None = None
     stage_output: RequirementsStageOutput | None = None
     questions: list[str] = Field(default_factory=list)
+    failure_reason: str = ""
 
     def __str__(self):
         return (
@@ -87,7 +90,7 @@ class RequirementsStageGraph:
         critic_runner: AgentRunner | None = None,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.2,
-        max_iterations: int = 5,
+        max_iterations: int = 2,
     ) -> None:
         print("Initializing RequirementsStageGraph...")
         self.extractor_agent = extractor_agent
@@ -124,6 +127,7 @@ class RequirementsStageGraph:
         graph_builder.add_node("critic_review", self.critic_review)
         graph_builder.add_node("complete", self.complete)
         graph_builder.add_node("waiting_for_user", self.waiting_for_user)
+        graph_builder.add_node("failed", self.failed)
 
         graph_builder.add_edge(START, "extract_requirements")
         graph_builder.add_edge("extract_requirements", "critic_review")
@@ -133,10 +137,12 @@ class RequirementsStageGraph:
             {
                 "complete": "complete",
                 "waiting_for_user": "waiting_for_user",
+                "failed": "failed",
             },
         )
         graph_builder.add_edge("complete", END)
         graph_builder.add_edge("waiting_for_user", END)
+        graph_builder.add_edge("failed", END)
         graph = graph_builder.compile()
     
         return graph
@@ -179,8 +185,12 @@ class RequirementsStageGraph:
         if self.internal_metrics["number_of_iterations"] > self.max_iterations:
             print("=========================\nWarning: Number of iterations exceeded. Max iterations:", self.max_iterations)
             print("=========================")
-            print("Forcefully approving to prevent infinite loop.")
-            critic_output.approved = True
+            print("Continuing to the next stage with the current requirements.")
+            return {
+                **state,
+                "critic_output": critic_output,
+                "force_continue_reason": f"Maximum requirements iterations exceeded: {self.max_iterations}",
+            }
         return {
             **state,
             "critic_output": critic_output,
@@ -193,9 +203,15 @@ class RequirementsStageGraph:
         print("Critic approved?", critic_output.approved)
 
 
+        if state.get("force_continue_reason"):
+            return "complete"
+        if state.get("failure_reason"):
+            return "failed"
+        if critic_output.questions:
+            return "waiting_for_user"
         if critic_output.approved:
             return "complete"
-        return "waiting_for_user"
+        return "failed"
 
     @staticmethod
     def complete(state: RequirementsState) -> RequirementsState:
@@ -205,7 +221,7 @@ class RequirementsStageGraph:
         stage_output = RequirementsStageOutput(
             requirements=extractor_output.requirements,
             question_answer_context=state.get("question_answer_context", []),
-            critic_verdict=critic_output.verdict,
+            critic_verdict=_build_requirements_verdict(state, critic_output),
             approved=True,
         )
         res = {
@@ -233,6 +249,27 @@ class RequirementsStageGraph:
             **state,
             "stage_output": stage_output,
             "status": "waiting_for_user",
+        }
+
+    @staticmethod
+    def failed(state: RequirementsState) -> RequirementsState:
+        print("Node: failed")
+        extractor_output = state["extractor_output"]
+        critic_output = state["critic_output"]
+        stage_output = RequirementsStageOutput(
+            requirements=extractor_output.requirements,
+            question_answer_context=state.get("question_answer_context", []),
+            critic_verdict=critic_output.verdict,
+            approved=False,
+        )
+        failure_reason = state.get("failure_reason") or (
+            "Requirements critic did not approve and did not return user questions."
+        )
+        return {
+            **state,
+            "stage_output": stage_output,
+            "status": "failed",
+            "failure_reason": failure_reason,
         }
 
     def _get_extractor_agent(self) -> Any:
@@ -272,6 +309,7 @@ class RequirementsStageGraph:
             critic_output=critic_output,
             stage_output=state.get("stage_output"),
             questions=critic_output.questions if critic_output else [],
+            failure_reason=state.get("failure_reason", ""),
         )
     @staticmethod
     def print_final_output(state: RequirementsState) -> None:
@@ -286,6 +324,16 @@ class RequirementsStageGraph:
 
 def build_requirements_graph(**kwargs: Any) -> RequirementsStageGraph:
     return RequirementsStageGraph(**kwargs)
+
+
+def _build_requirements_verdict(
+    state: RequirementsState,
+    critic_output: RequirementsCriticOutput,
+) -> str:
+    force_continue_reason = state.get("force_continue_reason")
+    if force_continue_reason:
+        return f"{critic_output.verdict}\n\nForce continued: {force_continue_reason}"
+    return critic_output.verdict
 
 
 def _run_structured_agent(agent: Any, agent_input: BaseModel) -> Any:
