@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from src.multi_agent_system.graphs.design import (
     DesignRunResult,
+    FormatErrorDecision,
     UserApprovalDecision,
     build_design_graph,
 )
@@ -49,7 +50,9 @@ def run_design_loop(
 ) -> DesignRunResult:
     graph = build_design_graph(
         approval_callback=_interactive_design_approval,
+        format_error_callback=_interactive_format_error_decision,
         auto_approval=auto_approval,
+        approval_overrides_critic=True,
     )
     current = graph.run(
         project_prompt=project_prompt,
@@ -61,7 +64,8 @@ def run_design_loop(
     revision_count = 0
     while current.status != "complete":
         if current.status == "failed":
-            raise RuntimeError(f"Design stage failed for {task.kind}: {current.critic_output}")
+            failure_details = current.failure_reason or current.critic_output
+            raise RuntimeError(f"Design stage failed for {task.kind}: {failure_details}")
         revision_count += 1
         if revision_count > max_revisions:
             print(
@@ -137,6 +141,28 @@ def _interactive_design_approval(
         approved=False,
         feedback=feedback,
     )
+
+
+def _interactive_format_error_decision(
+    node_name: str,
+    error_details: dict,
+) -> FormatErrorDecision:
+    print(f"\nInvalid structured output from design node: {node_name}")
+    print("Task:")
+    print(error_details.get("task"))
+    print("Error:")
+    print(error_details.get("error"))
+    invalid_output = error_details.get("invalid_output")
+    if invalid_output is not None:
+        print("Invalid output:")
+        print(invalid_output)
+    print("Retry instruction that will be sent to the agent:")
+    print(error_details.get("retry_instruction"))
+    choice = input("Ask the agent to regenerate this data in the correct format? [Y/n]: ").strip().lower()
+    if choice in {"", "y", "yes"}:
+        feedback = input("Extra formatting feedback for the agent (optional): ").strip()
+        return FormatErrorDecision(retry=True, feedback=feedback)
+    return FormatErrorDecision(retry=False)
 
 
 def main() -> None:
@@ -221,4 +247,7 @@ def _require_stage_artifact(result: DesignRunResult) -> DesignStageOutput:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError as exc:
+        raise SystemExit(f"\nError: {exc}") from None

@@ -31,7 +31,13 @@ class UserApprovalDecision(BaseModel):
     feedback: str = ""
 
 
+class FormatErrorDecision(BaseModel):
+    retry: bool = True
+    feedback: str = ""
+
+
 ApprovalCallback = Callable[[str, dict[str, Any], dict[str, Any]], UserApprovalDecision]
+FormatErrorCallback = Callable[[str, dict[str, Any]], FormatErrorDecision]
 
 
 def auto_approve(
@@ -52,6 +58,29 @@ Use the DesignTask to determine your current job:
 
 Use only the approved requirements, previous design output, question-answer context, and critic feedback provided in the input.
 Return exactly one matching artifact inside ArchitectOutput.
+
+Keep the design artifact compact enough to fit in one structured response:
+- extract_components: return at most 6 components, 8 relationships, 6 technologies, and 3 short notes.
+- decompose_component: decompose only the target_component, return 3-6 modules, and leave module signatures empty.
+- design_modules: design only the target_component, return at most 8 modules, 5 signatures per module, 4 params per signature, 12 dependency edges, and 3 short notes.
+- Prefer short phrases over paragraphs and do not repeat the full requirements text.
+""".strip()
+
+
+LENGTH_LIMIT_RETRY_FEEDBACK = """
+The previous structured response was too long and was truncated before parsing.
+Regenerate the same design task as a compact artifact: use the smallest useful set of modules,
+omit optional detail, keep signatures empty unless this is design_modules, and keep notes to one line.
+""".strip()
+
+
+FORMAT_RETRY_FEEDBACK = """
+Your previous response did not match the required structured output format.
+Return a valid ArchitectOutput object with the task field and exactly one populated artifact field:
+- extract_components must populate component_extraction, including a non-empty component_extraction.components list.
+- decompose_component must populate component_decomposition, including a non-empty component_decomposition.modules list.
+- design_modules must populate module_design, including a non-empty module_design.modules list.
+Do not put artifact fields such as high_level_architecture, components, modules, or dependency_graph at the top level.
 """.strip()
 
 
@@ -83,6 +112,7 @@ class DesignState(TypedDict, total=False):
     status: DesignStatus
     approval_feedback: str
     approval_rejected_at: str
+    approval_override_at: str
 
 
 class DesignRunResult(BaseModel):
@@ -93,6 +123,7 @@ class DesignRunResult(BaseModel):
     stage_output: DesignStageOutput | None = None
     question_answer_context: list[QuestionAnswer] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
+    failure_reason: str = ""
 
     @property
     def components(self) -> list[ComponentSpec]:
@@ -111,7 +142,11 @@ class DesignStateGraph:
         architect_runner: AgentRunner | None = None,
         critic_runner: AgentRunner | None = None,
         approval_callback: ApprovalCallback | None = None,
+        format_error_callback: FormatErrorCallback | None = None,
         auto_approval: bool = False,
+        approval_overrides_critic: bool = False,
+        max_length_limit_retries: int = 1,
+        max_format_retries: int = 3,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.2,
     ) -> None:
@@ -120,7 +155,11 @@ class DesignStateGraph:
         self.architect_runner = architect_runner or _run_structured_agent
         self.critic_runner = critic_runner or _run_structured_agent
         self.auto_approval = auto_approval
+        self.approval_overrides_critic = approval_overrides_critic
+        self.max_length_limit_retries = max(0, max_length_limit_retries)
+        self.max_format_retries = max(0, max_format_retries)
         self.approval_callback = auto_approve if auto_approval or approval_callback is None else approval_callback
+        self.format_error_callback = format_error_callback
         self.model_name = model_name
         self.temperature = temperature
         self.graph = self._build_design_graph()
@@ -142,8 +181,82 @@ class DesignStateGraph:
             "question_answer_context": question_answer_context or [],
             "critic_feedback": critic_feedback,
         }
-        final_state = self.graph.invoke(initial_state)
-        return self._to_result(final_state)
+        current_state = initial_state
+        length_limit_failures = 0
+        format_failures = 0
+        while True:
+            try:
+                final_state = self.graph.invoke(current_state)
+                return self._to_result(final_state)
+            except Exception as exc:
+                if _is_length_finish_reason_error(exc):
+                    if length_limit_failures >= self.max_length_limit_retries:
+                        return _build_design_failure_result(
+                            task=task,
+                            question_answer_context=question_answer_context or [],
+                            verdict="Design agent output exceeded the model completion limit.",
+                            feedback=(
+                                "The model generated a structured design response that was truncated before "
+                                "it could be parsed. Retry the design task with a smaller project scope or "
+                                "stricter output limits."
+                            ),
+                            required_change="Regenerate a shorter design artifact that follows the task output budget.",
+                            exc=exc,
+                        )
+                    length_limit_failures += 1
+                    current_state = {
+                        **current_state,
+                        "critic_feedback": _append_feedback(
+                            current_state.get("critic_feedback", ""),
+                            LENGTH_LIMIT_RETRY_FEEDBACK,
+                        ),
+                    }
+                    continue
+
+                if not _is_format_error(exc):
+                    raise
+
+                format_failures += 1
+                if format_failures > self.max_format_retries:
+                    return _build_design_failure_result(
+                        task=task,
+                        question_answer_context=question_answer_context or [],
+                        verdict="Design agent output did not match the required format.",
+                        feedback="The architect response could not be parsed or did not contain the required task artifact.",
+                        required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
+                        exc=exc,
+                    )
+                failure_details = _build_format_error_details(
+                    node_name="architect_design",
+                    task=task,
+                    exc=exc,
+                    attempt=format_failures,
+                    max_attempts=self.max_format_retries,
+                )
+                decision = (
+                    self.format_error_callback("architect_design", failure_details)
+                    if self.format_error_callback is not None
+                    else FormatErrorDecision(retry=format_failures <= self.max_format_retries)
+                )
+                if not decision.retry:
+                    return _build_design_failure_result(
+                        task=task,
+                        question_answer_context=question_answer_context or [],
+                        verdict="Design agent output did not match the required format.",
+                        feedback="The architect response could not be parsed or did not contain the required task artifact.",
+                        required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
+                        exc=exc,
+                    )
+                current_state = {
+                    **current_state,
+                    "critic_feedback": _append_feedback(
+                        _append_feedback(
+                            current_state.get("critic_feedback", ""),
+                            FORMAT_RETRY_FEEDBACK,
+                        ),
+                        decision.feedback,
+                    ),
+                }
 
     def _build_design_graph(self):
         graph_builder = StateGraph(DesignState)
@@ -245,6 +358,12 @@ class DesignStateGraph:
                 "approval_feedback": approval.feedback,
                 "approval_rejected_at": "critic_review",
             }
+        if self.approval_overrides_critic:
+            return {
+                **state,
+                "critic_output": critic_output,
+                "approval_override_at": "critic_review",
+            }
         return {
             **state,
             "critic_output": critic_output,
@@ -258,6 +377,8 @@ class DesignStateGraph:
 
     @staticmethod
     def route_after_critic(state: DesignState) -> str:
+        if state.get("approval_override_at") == "critic_review":
+            return "complete"
         critic_output = state["critic_output"]
         if critic_output.questions:
             return "needs_revision"
@@ -268,11 +389,17 @@ class DesignStateGraph:
     @staticmethod
     def complete(state: DesignState) -> DesignState:
         critic_output = state["critic_output"]
+        critic_verdict = critic_output.verdict
+        if state.get("approval_override_at") == "critic_review" and not critic_output.approved:
+            critic_verdict = (
+                f"{critic_verdict}\n\n"
+                "User approved continuation despite the critic requesting design revisions."
+            )
         stage_output = DesignStageOutput(
             task=state["task"],
             architect_output=state["architect_output"],
             question_answer_context=state.get("question_answer_context", []),
-            critic_verdict=critic_output.verdict,
+            critic_verdict=critic_verdict,
             approved=True,
         )
         return {
@@ -330,6 +457,7 @@ class DesignStateGraph:
             stage_output=state.get("stage_output"),
             question_answer_context=state.get("question_answer_context", []),
             questions=critic_output.questions if critic_output else [],
+            failure_reason=state.get("failure_reason", ""),
         )
 
 
@@ -343,6 +471,88 @@ def _append_feedback(existing_feedback: str, new_feedback: str) -> str:
     if not new_feedback:
         return existing_feedback
     return f"{existing_feedback}\n\nUser approval feedback: {new_feedback}"
+
+
+def _build_design_failure_result(
+    task: DesignTask,
+    question_answer_context: list[QuestionAnswer],
+    verdict: str,
+    feedback: str,
+    required_change: str,
+    exc: Exception,
+) -> DesignRunResult:
+    return DesignRunResult(
+        status="failed",
+        task=task,
+        critic_output=DesignCriticOutput(
+            approved=False,
+            verdict=verdict,
+            feedback=feedback,
+            required_changes=[required_change],
+        ),
+        question_answer_context=question_answer_context,
+        failure_reason=_format_agent_failure(exc),
+    )
+
+
+def _is_format_error(exc: Exception) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if current.__class__.__name__ in {
+            "StructuredOutputValidationError",
+            "MultipleStructuredOutputsError",
+            "ValidationError",
+            "ValueError",
+        }:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _build_format_error_details(
+    node_name: str,
+    task: DesignTask,
+    exc: Exception,
+    attempt: int,
+    max_attempts: int,
+) -> dict[str, Any]:
+    return {
+        "node_name": node_name,
+        "task": task.model_dump(mode="json"),
+        "attempt": attempt,
+        "max_attempts": max_attempts,
+        "error": _format_agent_failure(exc),
+        "invalid_output": _extract_invalid_output(exc),
+        "retry_instruction": FORMAT_RETRY_FEEDBACK,
+    }
+
+
+def _extract_invalid_output(exc: Exception) -> Any:
+    current: BaseException | None = exc
+    while current is not None:
+        ai_message = getattr(current, "ai_message", None)
+        if ai_message is not None:
+            if hasattr(ai_message, "model_dump"):
+                return ai_message.model_dump(mode="json")
+            return str(ai_message)
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _is_length_finish_reason_error(exc: Exception) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if current.__class__.__name__ == "LengthFinishReasonError":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _format_agent_failure(exc: Exception) -> str:
+    message = str(exc).strip()
+    if not message:
+        message = exc.__class__.__name__
+    return f"{exc.__class__.__name__}: {message}"
 
 
 def _normalise_architect_output_for_task(
@@ -363,7 +573,37 @@ def _normalise_architect_output_for_task(
     }
     if expected_artifacts[task.kind] is None:
         raise ValueError(f"{task.kind} output must populate its matching artifact field")
+    _validate_required_artifact_content(architect_output, task)
     return architect_output
+
+
+def _validate_required_artifact_content(
+    architect_output: ArchitectOutput,
+    task: DesignTask,
+) -> None:
+    if task.kind == "extract_components":
+        component_extraction = architect_output.component_extraction
+        if component_extraction is None or not component_extraction.components:
+            raise ValueError(
+                "extract_components output must include a non-empty "
+                "component_extraction.components list"
+            )
+        return
+
+    if task.kind == "decompose_component":
+        component_decomposition = architect_output.component_decomposition
+        if component_decomposition is None or not component_decomposition.modules:
+            raise ValueError(
+                "decompose_component output must include a non-empty "
+                "component_decomposition.modules list"
+            )
+        return
+
+    module_design = architect_output.module_design
+    if module_design is None or not module_design.modules:
+        raise ValueError(
+            "design_modules output must include a non-empty module_design.modules list"
+        )
 
 
 def _run_structured_agent(agent: Any, agent_input: BaseModel) -> Any:
