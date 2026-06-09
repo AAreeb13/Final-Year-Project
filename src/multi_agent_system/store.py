@@ -6,8 +6,12 @@ from pathlib import Path
 from src.multi_agent_system.output_schema import (
     ComponentDecompositionOutput,
     ComponentExtractionOutput,
+    EnvironmentSetupExecution,
+    EnvironmentSetupPlan,
+    EnvironmentSetupStageOutput,
     ModuleDesignOutput,
     ProjectStore,
+    RepositoryStructure,
     RequirementsStageOutput,
 )
 from src.settings import settings
@@ -99,6 +103,39 @@ class ProjectStoreRepository:
         store = self.load_project(project_id)
         store.module_designs[component_name] = output
         store.stage_statuses[f"design.design_modules.{component_name}"] = "complete"
+        return self.save_project(store)
+
+    def save_repository_structure(
+        self,
+        project_id: str,
+        output: RepositoryStructure,
+    ) -> ProjectStore:
+        store = self.load_project(project_id)
+        store.repository_structure = output
+        store.stage_statuses["environment.repository_structure"] = "approved"
+        return self.save_project(store)
+
+    def save_environment_setup_plan(
+        self,
+        project_id: str,
+        output: EnvironmentSetupStageOutput,
+    ) -> ProjectStore:
+        if not output.approved:
+            raise ValueError("Only approved environment setup plans can be saved to the project store")
+        store = self.load_project(project_id)
+        store.repository_structure = output.repository_structure
+        store.environment_setup = output.environment_setup
+        store.stage_statuses["environment.project_setup"] = "approved"
+        return self.save_project(store)
+
+    def save_environment_setup_execution(
+        self,
+        project_id: str,
+        output: EnvironmentSetupExecution,
+    ) -> ProjectStore:
+        store = self.load_project(project_id)
+        store.environment_setup_execution = output
+        store.stage_statuses["environment.project_setup"] = output.status
         return self.save_project(store)
 
     def update_stage_status(self, project_id: str, stage: str, status: str) -> ProjectStore:

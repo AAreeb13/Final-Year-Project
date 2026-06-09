@@ -1,6 +1,6 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class RequirementsSpec(BaseModel):
@@ -196,6 +196,99 @@ class ModuleDesignOutput(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class FileSpec(BaseModel):
+    name: str = ""
+    modules: list[str] = Field(default_factory=list)
+
+
+class DirectorySpec(BaseModel):
+    name: str = ""
+    parent: str | None = None
+    children: list[str] = Field(default_factory=list)
+    files: list[FileSpec] = Field(default_factory=list)
+
+
+class RepositoryStructure(BaseModel):
+    directories: list[DirectorySpec] = Field(default_factory=list)
+
+
+class SetupFileSpec(BaseModel):
+    path: str = ""
+    content: str = ""
+    description: str = ""
+
+
+class EnvironmentSetupPlan(BaseModel):
+    language: str = ""
+    framework: str = ""
+    package_manager: str = ""
+    dependency_files: list[str] = Field(default_factory=list)
+    setup_files: list[SetupFileSpec] = Field(default_factory=list)
+    setup_commands: list[list[str]] = Field(default_factory=list)
+    test_commands: list[list[str]] = Field(default_factory=list)
+    build_commands: list[list[str]] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    @field_validator("setup_commands", "test_commands", "build_commands", mode="before")
+    @classmethod
+    def normalize_commands(cls, value: Any) -> Any:
+        return _normalize_command_list(value)
+
+
+class EnvironmentSetupStageOutput(BaseModel):
+    repository_structure: RepositoryStructure = Field(default_factory=RepositoryStructure)
+    environment_setup: EnvironmentSetupPlan = Field(default_factory=EnvironmentSetupPlan)
+    approved: bool = False
+    approval_feedback: str = ""
+    notes: list[str] = Field(default_factory=list)
+
+
+class SetupExecutionResult(BaseModel):
+    step: str = ""
+    tool_name: str = ""
+    command: list[str] = Field(default_factory=list)
+    path: str | None = None
+    status: str = "unknown"
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    message: str = ""
+    raw_output: str = ""
+
+
+class EnvironmentSetupExecution(BaseModel):
+    results: list[SetupExecutionResult] = Field(default_factory=list)
+    status: str = "not_started"
+    summary: str = ""
+
+
+def _normalize_command_list(value: Any) -> Any:
+    if value in (None, ""):
+        return []
+    if isinstance(value, tuple):
+        return [list(value)]
+    if isinstance(value, str):
+        return [value.split()]
+    if not isinstance(value, list):
+        return value
+
+    normalized = []
+    for item in value:
+        if item in (None, ""):
+            continue
+        if isinstance(item, str):
+            normalized.append(item.split())
+            continue
+        if isinstance(item, tuple):
+            normalized.append([str(part) for part in item])
+            continue
+        if isinstance(item, list):
+            normalized.append([str(part) for part in item])
+            continue
+        normalized.append(item)
+    return normalized
+
+
 class ArchitectInput(BaseModel):
     project_prompt: str
     requirements: RequirementsStageOutput
@@ -273,4 +366,7 @@ class ProjectStore(BaseModel):
     component_extraction: ComponentExtractionOutput | None = None
     component_decompositions: dict[str, ComponentDecompositionOutput] = Field(default_factory=dict)
     module_designs: dict[str, ModuleDesignOutput] = Field(default_factory=dict)
+    repository_structure: RepositoryStructure | None = None
+    environment_setup: EnvironmentSetupPlan | None = None
+    environment_setup_execution: EnvironmentSetupExecution | None = None
     stage_statuses: dict[str, str] = Field(default_factory=dict)

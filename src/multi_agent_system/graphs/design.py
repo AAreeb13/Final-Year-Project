@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal, TypedDict, TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
+from langsmith import tracing_context
 from pydantic import BaseModel, Field
 
 from src.agents.AgentFactory import AgentFactory
@@ -19,6 +20,7 @@ from src.multi_agent_system.output_schema import (
     QuestionAnswer,
     RequirementsStageOutput,
 )
+from src.settings import configure_langsmith_environment, settings
 
 
 DesignStatus = Literal["complete", "needs_revision", "failed"]
@@ -173,6 +175,7 @@ class DesignStateGraph:
         question_answer_context: list[QuestionAnswer] | None = None,
         critic_feedback: str = "",
     ) -> DesignRunResult:
+        configure_langsmith_environment(settings)
         initial_state: DesignState = {
             "project_prompt": project_prompt,
             "requirements": requirements,
@@ -184,79 +187,102 @@ class DesignStateGraph:
         current_state = initial_state
         length_limit_failures = 0
         format_failures = 0
-        while True:
-            try:
-                final_state = self.graph.invoke(current_state)
-                return self._to_result(final_state)
-            except Exception as exc:
-                if _is_length_finish_reason_error(exc):
-                    if length_limit_failures >= self.max_length_limit_retries:
+        trace_tags = [
+            "design_graph",
+            f"model:{self.model_name}",
+            f"task:{task.kind}",
+        ]
+        if task.target_component:
+            trace_tags.append(f"target_component:{task.target_component}")
+        trace_metadata = {
+            "graph": "design",
+            "model_name": self.model_name,
+            "temperature": self.temperature,
+            "task_kind": task.kind,
+            "target_component": task.target_component,
+            "has_previous_design_output": previous_design_output is not None,
+            "question_count": len(question_answer_context or []),
+            "critic_feedback_length": len(critic_feedback),
+        }
+        with tracing_context(
+            enabled=settings.LANGSMITH_TRACING,
+            project_name=settings.LANGSMITH_PROJECT,
+            tags=trace_tags,
+            metadata=trace_metadata,
+        ):
+            while True:
+                try:
+                    final_state = self.graph.invoke(current_state)
+                    return self._to_result(final_state)
+                except Exception as exc:
+                    if _is_length_finish_reason_error(exc):
+                        if length_limit_failures >= self.max_length_limit_retries:
+                            return _build_design_failure_result(
+                                task=task,
+                                question_answer_context=question_answer_context or [],
+                                verdict="Design agent output exceeded the model completion limit.",
+                                feedback=(
+                                    "The model generated a structured design response that was truncated before "
+                                    "it could be parsed. Retry the design task with a smaller project scope or "
+                                    "stricter output limits."
+                                ),
+                                required_change="Regenerate a shorter design artifact that follows the task output budget.",
+                                exc=exc,
+                            )
+                        length_limit_failures += 1
+                        current_state = {
+                            **current_state,
+                            "critic_feedback": _append_feedback(
+                                current_state.get("critic_feedback", ""),
+                                LENGTH_LIMIT_RETRY_FEEDBACK,
+                            ),
+                        }
+                        continue
+
+                    if not _is_format_error(exc):
+                        raise
+
+                    format_failures += 1
+                    if format_failures > self.max_format_retries:
                         return _build_design_failure_result(
                             task=task,
                             question_answer_context=question_answer_context or [],
-                            verdict="Design agent output exceeded the model completion limit.",
-                            feedback=(
-                                "The model generated a structured design response that was truncated before "
-                                "it could be parsed. Retry the design task with a smaller project scope or "
-                                "stricter output limits."
-                            ),
-                            required_change="Regenerate a shorter design artifact that follows the task output budget.",
+                            verdict="Design agent output did not match the required format.",
+                            feedback="The architect response could not be parsed or did not contain the required task artifact.",
+                            required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
                             exc=exc,
                         )
-                    length_limit_failures += 1
+                    failure_details = _build_format_error_details(
+                        node_name="architect_design",
+                        task=task,
+                        exc=exc,
+                        attempt=format_failures,
+                        max_attempts=self.max_format_retries,
+                    )
+                    decision = (
+                        self.format_error_callback("architect_design", failure_details)
+                        if self.format_error_callback is not None
+                        else FormatErrorDecision(retry=format_failures <= self.max_format_retries)
+                    )
+                    if not decision.retry:
+                        return _build_design_failure_result(
+                            task=task,
+                            question_answer_context=question_answer_context or [],
+                            verdict="Design agent output did not match the required format.",
+                            feedback="The architect response could not be parsed or did not contain the required task artifact.",
+                            required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
+                            exc=exc,
+                        )
                     current_state = {
                         **current_state,
                         "critic_feedback": _append_feedback(
-                            current_state.get("critic_feedback", ""),
-                            LENGTH_LIMIT_RETRY_FEEDBACK,
+                            _append_feedback(
+                                current_state.get("critic_feedback", ""),
+                                FORMAT_RETRY_FEEDBACK,
+                            ),
+                            decision.feedback,
                         ),
                     }
-                    continue
-
-                if not _is_format_error(exc):
-                    raise
-
-                format_failures += 1
-                if format_failures > self.max_format_retries:
-                    return _build_design_failure_result(
-                        task=task,
-                        question_answer_context=question_answer_context or [],
-                        verdict="Design agent output did not match the required format.",
-                        feedback="The architect response could not be parsed or did not contain the required task artifact.",
-                        required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
-                        exc=exc,
-                    )
-                failure_details = _build_format_error_details(
-                    node_name="architect_design",
-                    task=task,
-                    exc=exc,
-                    attempt=format_failures,
-                    max_attempts=self.max_format_retries,
-                )
-                decision = (
-                    self.format_error_callback("architect_design", failure_details)
-                    if self.format_error_callback is not None
-                    else FormatErrorDecision(retry=format_failures <= self.max_format_retries)
-                )
-                if not decision.retry:
-                    return _build_design_failure_result(
-                        task=task,
-                        question_answer_context=question_answer_context or [],
-                        verdict="Design agent output did not match the required format.",
-                        feedback="The architect response could not be parsed or did not contain the required task artifact.",
-                        required_change="Regenerate the design artifact in the exact ArchitectOutput format.",
-                        exc=exc,
-                    )
-                current_state = {
-                    **current_state,
-                    "critic_feedback": _append_feedback(
-                        _append_feedback(
-                            current_state.get("critic_feedback", ""),
-                            FORMAT_RETRY_FEEDBACK,
-                        ),
-                        decision.feedback,
-                    ),
-                }
 
     def _build_design_graph(self):
         graph_builder = StateGraph(DesignState)

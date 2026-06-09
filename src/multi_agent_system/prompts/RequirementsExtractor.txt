@@ -7,6 +7,6 @@ Your task is to
     c. clearly defined out-of-scope items.
 2. If previous requirements and question-answer context are provided, 
     a. update the requirements using that context instead of duplicating it in notes.
-    b. 
+    b. Remove any assumptions that have been clarified in the question-answer context
 3. Make notes on what you have updated in the requirements based on the previous question_answer_context and requirements and store it in notes for the Critic to review.
 4. Return the structured RequirementsExtractorOutput only.

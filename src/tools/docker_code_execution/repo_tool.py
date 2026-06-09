@@ -6,7 +6,7 @@ from src.settings import settings
 import os
 
 
-@tool(arg_schema=RunInRepositorySchema)
+@tool(args_schema=RunInRepositorySchema)
 def run_repository_command(command: list[str], timeout_s: int = 30) -> str:
     """Run a command inside a specific project repository that is found in the workspace.
 
@@ -61,5 +61,5 @@ if __name__ == "__main__":
             break
         command_list = user_input.split()
         result = run_repository_command.invoke({"command": command_list, "timeout_s": 30})
-        # print("Command execution result:", result)
+        print("Command execution result:", result)
     stop_container.invoke({})

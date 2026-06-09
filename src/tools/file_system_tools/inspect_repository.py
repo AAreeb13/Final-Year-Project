@@ -24,7 +24,7 @@ def _resolve_file_inside_workspace_repository(relative_path: str = None) -> Path
         file_path = (file_path / relative_path).expanduser().resolve()
     if file_path != workspace_root and workspace_root not in file_path.parents:
         raise ValueError("Path must stay inside the configured workplace folder.")
-    print(f"Resolved file path: {file_path}")
+    # print(f"Resolved file path: {file_path}")
     # is git repository
     if file_path.is_dir() and not (file_path / ".git").exists():
         raise ValueError("Repository folder is not a valid Git repository.")
@@ -106,7 +106,7 @@ def edit_repository_file(relative_path: str, new_content: str) -> str:
 
 @tool(args_schema=InspectFolderStructureSchema)
 def inspect_repository(relative_path: str, max_depth: int = 5, max_entries: int = 200, extra_ignored_names: list[str] = None) -> str:
-    """Return a tree view of the configured Git repository,  the total number of entries and whether it's truncated 
+    """Return a tree view of the configured Git repository or a folder,  the total number of entries and whether it's truncated 
     The output follows this format: {"tree": str, "total_entries": int, "truncated": bool}
     
 
@@ -116,17 +116,18 @@ def inspect_repository(relative_path: str, max_depth: int = 5, max_entries: int 
         max_entries: Maximum number of files/directories to return.
         extra_ignored_names: Additional file or directory names to omit.
     """
+    print("Inspecting repository", relative_path)
     try:
         target_path = _resolve_file_inside_workspace_repository(relative_path)
         # only repo name with relative path
-        print("target path: ", target_path)
+        # print("target path: ", target_path)
     except ValueError as error:
+        print(f"Error resolving path: {error}")
         return {
             "status": "error",
             "message": str(error),
         }
-    print("Target path for inspection: ", target_path)
-
+    print("invoking folder structure")
     return inspect_folder_structure.invoke({
         "relative_path": str(target_path),
         "max_depth": max_depth,

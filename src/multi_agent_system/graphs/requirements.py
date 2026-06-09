@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal, TypedDict, TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
+from langsmith import tracing_context
 from pydantic import BaseModel, Field
 
 from src.agents.AgentFactory import AgentFactory
@@ -17,6 +18,7 @@ from src.multi_agent_system.output_schema import (
     RequirementsSpec,
     RequirementsStageOutput,
 )
+from src.settings import configure_langsmith_environment, settings
 
 
 RequirementsStatus = Literal["complete", "waiting_for_user", "failed"]
@@ -111,13 +113,28 @@ class RequirementsStageGraph:
         previous_requirements: RequirementsSpec | None = None,
         question_answer_context: list[QuestionAnswer] | None = None,
     ) -> RequirementsRunResult:
+        configure_langsmith_environment(settings)
         print("Running RequirementsStageGraph...")
         initial_state: RequirementsState = {
             "project_prompt": project_prompt,
             "previous_requirements": previous_requirements,
             "question_answer_context": question_answer_context or [],
         }
-        final_state = self.graph.invoke(initial_state)
+        trace_tags = ["requirements_graph", f"model:{self.model_name}"]
+        trace_metadata = {
+            "graph": "requirements",
+            "model_name": self.model_name,
+            "temperature": self.temperature,
+            "has_previous_requirements": previous_requirements is not None,
+            "question_count": len(question_answer_context or []),
+        }
+        with tracing_context(
+            enabled=settings.LANGSMITH_TRACING,
+            project_name=settings.LANGSMITH_PROJECT,
+            tags=trace_tags,
+            metadata=trace_metadata,
+        ):
+            final_state = self.graph.invoke(initial_state)
         return self._to_result(final_state)
 
     def _build_requirement_graph(self):

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     LANGSMITH_PROJECT: str = "final-year-project-single-agent"
     EVALUATION_DIRECTORY: str | None = None
     DATASET_DIRECTORY: str | None = None
+    REPO_NAME: str | None = None
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
@@ -33,7 +35,24 @@ class Settings(BaseSettings):
             print("Warning: Evaluation directory not defined hence evaluation unavailable")
         if self.DATASET_DIRECTORY is None:
             print("Warning: Dataset not supplied")
+        if self.REPO_NAME is None:
+            print("Warning: Repository name not supplied, GitHub related tools may not work as expected")
 settings = Settings()
+
+
+def configure_langsmith_environment(settings_obj: Settings) -> None:
+    """Mirror LangSmith settings into the process environment for tracing."""
+
+    os.environ["LANGSMITH_TRACING"] = str(settings_obj.LANGSMITH_TRACING).lower()
+
+    optional_env_vars = {
+        "LANGSMITH_ENDPOINT": settings_obj.LANGSMITH_ENDPOINT,
+        "LANGSMITH_API_KEY": settings_obj.LANGSMITH_API_KEY,
+        "LANGSMITH_PROJECT": settings_obj.LANGSMITH_PROJECT,
+    }
+    for env_var, value in optional_env_vars.items():
+        if value:
+            os.environ[env_var] = value
 
 if __name__ == "__main__":
     assert settings.OPEN_ROUTER_KEY is not None, "OPEN_ROUTER_KEY must be set in the .env file"
