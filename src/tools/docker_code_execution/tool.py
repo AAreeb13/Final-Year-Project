@@ -57,13 +57,15 @@ def stop_container() -> str:
         )
 
 @tool(args_schema=RunInContainerSchema)
-def run_in_container(command: list[str], timeout_s: int = 30) -> str:
+def run_in_container(command: list[str], timeout_s: int = 30, workspace_path: str | None = None) -> str:
     """Run a command inside the project Docker container.
 
     Automatically starts the project container if it does not already exist.
     The container stays running until stop_container is called.
     """
-    workspace_path = settings.WORKPLACE_FOLDER
+    print("Workspace path received for run_in_container:", workspace_path)
+    workspace_path =  settings.WORKPLACE_FOLDER if workspace_path is None else workspace_path
+    
     if workspace_path is None:
         return _build_output(
             status="error",
@@ -204,7 +206,6 @@ def _run_command_in_container(
 def _get_container_name() -> str:
     return getattr(settings, "AGENT_SYSTEM_CONTAINER_NAME", "agent_system_container")
 
-
 def _get_or_start_container(
     workspace_path: str,
     image: str = DEFAULT_IMAGE,
@@ -213,9 +214,27 @@ def _get_or_start_container(
 ) -> str:
     client = _get_client()
     container_name = _get_container_name()
+    print(f"[Docker] recieved absolute workspace path for container: {workspace_path}")
+    absolute_workspace_path = os.path.abspath(workspace_path)
 
     try:
+        print("[Docker] trying to get existing container...")
         container = client.containers.get(container_name)
+        
+        # Check current container mounts
+        current_mount_source = None
+        for mount in container.attrs.get("Mounts", []):
+            print(f"[Docker] Checking container mount: {mount.get('Source')} -> {mount.get('Destination')}")
+            if mount.get("Destination") == DEFAULT_WORKSPACE_BIND:
+                current_mount_source = mount.get("Source")
+            
+        # If the mount doesn't match the requested folder, destroy it!
+        if current_mount_source != absolute_workspace_path:
+            print(f"[Docker] Mount mismatch detected. Recreating container for: {absolute_workspace_path}")
+            if container.status == "running":
+                container.stop()
+            container.remove()
+            raise NotFound("Remounting required.")
 
         if container.status != "running":
             container.start()
@@ -224,29 +243,14 @@ def _get_or_start_container(
         return container.id
 
     except NotFound:
+        print(f"[Docker] Starting new container for workspace since NotFound: {absolute_workspace_path}")
         return _start_container(
-            workspace_path=workspace_path,
+            workspace_path=absolute_workspace_path,
             image=image,
             memory_limit=memory_limit,
             container_name=container_name,
             network_enabled=network_enabled,
         )
-
-    except APIError as error:
-        # Handles a possible race where another process creates the container
-        # between the NotFound check and container creation.
-        if "Conflict" in str(error) or "already in use" in str(error):
-            container = client.containers.get(container_name)
-
-            if container.status != "running":
-                container.start()
-                container.reload()
-
-            return container.id
-
-        raise
-
-
 
 
 # if __name__ == "__main__":
@@ -279,15 +283,41 @@ def _get_or_start_container(
 #     print(stop_container.invoke({}))
 
 if __name__ == "__main__":
+    print("Testing Docker Code Execution...")
+
+    # Ensure we have a valid base folder to work with
+    base_folder = settings.WORKPLACE_FOLDER
+    if not base_folder:
+        print("Error: WORKPLACE_FOLDER is not set in settings.")
+        exit(1)
 
     while True:
-        print("Testing Docker Code Execution...")
-        command = input("Enter the command to run in the container (or 'exit' to quit): ").strip().split()
-        if command == ["exit"]:
+        command = input("Enter the command to run in the container (or 'exit' to quit): ").strip()
+        print("Received command:", command)
+        if command.lower() == "exit":
             break
-        output_json = run_in_container.invoke({"command": command, "timeout_s": 30})
+            
+        command_list = ["sh", "-c", command]
+        print("Running command:", command_list)
+        
+        # FIX: Explicitly target the repository folder inside the workplace folder
+        target_repo_path = os.path.join(base_folder, "fyp-test-repository")
+        print("Target repository path for command execution:", target_repo_path)
+        output_json = run_in_container.invoke({
+            "command": command_list, 
+            "timeout_s": 30, 
+            "workspace_path": target_repo_path  # Pass the absolute host path
+        })
+        
         print("Output:")
         print(output_json)
+        
+        output_dict = DockerCommandOutputSchema.model_validate_json(output_json)
+        if output_dict and output_dict.stdout:
+            print("====== \"Command Output\" =====")
+            print(output_dict.stdout)
+            print("===============================")
+            
     print("Exiting...")
     res = stop_container.invoke({})
     print("Container stopped:", res)

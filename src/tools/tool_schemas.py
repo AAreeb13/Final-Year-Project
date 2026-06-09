@@ -1,12 +1,18 @@
 from pydantic import BaseModel
 
-
+class RunInRepositorySchema(BaseModel):
+    """
+    Schema for the run_repository_command tool.
+    """
+    command: list[str]
+    timeout_s: int = 30
 class RunInContainerSchema(BaseModel):
     """
     Schema for the run_in_container tool.
     """
     command: list[str]
     timeout_s: int = 30
+    workspace_path: str | None = None
 
 class InspectFolderStructureSchema(BaseModel):
     """

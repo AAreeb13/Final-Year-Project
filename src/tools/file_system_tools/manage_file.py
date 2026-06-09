@@ -3,12 +3,12 @@ import json
 from pathlib import Path
 
 from langchain_core.tools import tool
-from tools.tool_schemas import DeleteFileSchema, EditFileSchema
+from src.tools.tool_schemas import CreateFileSchema, DeleteFileSchema, EditFileSchema
 
 from src.settings import settings
 
 
-@tool
+@tool(args_schema=CreateFileSchema)
 def create_file(relative_path_to_folder: str, file_name: str) -> str:
     """
     Create a file in the workplace folder with the specified content.

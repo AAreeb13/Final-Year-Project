@@ -4,21 +4,21 @@ from pathlib import Path
 from typing import Iterable
 
 from langchain_core.tools import tool
-from tools.tool_schemas import InspectFolderStructureSchema
+from src.tools.tool_schemas import InspectFolderStructureSchema
 
 from src.settings import settings
 
 
 DEFAULT_IGNORED_NAMES = {
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    "__pycache__",
-    "dist",
-    "build",
-    "node_modules",
+    # ".git",
+    # ".mypy_cache",
+    # ".pytest_cache",
+    # ".ruff_cache",
+    # ".venv",
+    # "__pycache__",
+    # "dist",
+    # "build",
+    # "node_modules",
 }
 
 
