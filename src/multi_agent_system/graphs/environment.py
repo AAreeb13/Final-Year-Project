@@ -41,6 +41,7 @@ RepositoryInspector = Callable[[], Any]
 CommandExecutor = Callable[[list[str], int], Any]
 ApprovalCallback = Callable[[EnvironmentSetupStageOutput, str], ApprovalDecision]
 FailureAdviceCallback = Callable[[SetupExecutionResult], str]
+SetupDirectoryCreator = Callable[[DirectorySpec], SetupExecutionResult]
 SetupFileWriter = Callable[[SetupFileSpec], SetupExecutionResult]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -65,7 +66,9 @@ Planning rules:
 - You do not have tools. Do not ask to inspect files. The repository_tree input is the only repository inspection context.
 - Do not create application source files or test source files in setup_files.
 - Only use setup_files for environment/configuration files, dependency files, or ignore files.
+- The graph creates directories from repository_structure before writing setup_files.
 - The graph writes setup_files before running setup_commands, build_commands, or test_commands.
+- If a command requires a folder, include it in repository_structure.
 - If a command requires a file or folder, include the required file in setup_files or create it with an earlier command.
 - If setup_commands reference requirements.txt, pom.xml, package.json, or another dependency file, that file must exist first.
 - Prefer the default Python repository structure unless project evidence says otherwise:
@@ -199,6 +202,7 @@ class EnvironmentStageGraph:
         repository_inspector: RepositoryInspector | None = None,
         environment_evaluator: EnvironmentEvaluator | None = None,
         command_executor: CommandExecutor | None = None,
+        setup_directory_creator: SetupDirectoryCreator | None = None,
         setup_file_writer: SetupFileWriter | None = None,
         approval_callback: ApprovalCallback | None = None,
         failure_advice_callback: FailureAdviceCallback | None = None,
@@ -213,6 +217,7 @@ class EnvironmentStageGraph:
         self.repository_inspector = repository_inspector or _inspect_repository_root
         self.environment_evaluator = environment_evaluator or _evaluate_environment_state
         self.command_executor = command_executor or _execute_repository_command
+        self.setup_directory_creator = setup_directory_creator or _create_repository_setup_directory
         self.setup_file_writer = setup_file_writer or _write_repository_setup_file
         self.approval_callback = approval_callback or default_environment_approval
         self.failure_advice_callback = failure_advice_callback or default_failure_advice
@@ -416,6 +421,29 @@ class EnvironmentStageGraph:
         print("Node: execute_setup_commands")
         stage_output = state["stage_output"]
         results: list[SetupExecutionResult] = []
+        for directory in stage_output.repository_structure.directories:
+            result = self.setup_directory_creator(directory)
+            results.append(result)
+            if result.status != "success":
+                execution = EnvironmentSetupExecution(
+                    results=results,
+                    status="failed",
+                    summary=f"Failed to create setup directory: {directory.name}",
+                )
+                self._save_environment_setup_execution(state, execution)
+                user_advice = self.failure_advice_callback(result)
+                feedback = _append_feedback(
+                    state.get("evaluation_feedback", ""),
+                    _format_failed_command_feedback(result, user_advice),
+                )
+                return {
+                    **state,
+                    "execution_result": execution,
+                    "failed_command_result": result,
+                    "evaluation_feedback": feedback,
+                    "status": "needs_revision",
+                }
+
         for setup_file in stage_output.environment_setup.setup_files:
             result = self.setup_file_writer(setup_file)
             results.append(result)
@@ -598,6 +626,38 @@ def _execute_repository_command(command: list[str], timeout_s: int) -> Any:
     return run_repository_command.invoke({"command": command, "timeout_s": timeout_s})
 
 
+def _create_repository_setup_directory(directory: DirectorySpec) -> SetupExecutionResult:
+    try:
+        repo_path = _resolve_repository_path()
+        directory_path = _resolve_directory_spec_path(repo_path, directory)
+        if directory_path != repo_path and repo_path not in directory_path.parents:
+            return SetupExecutionResult(
+                step="setup_directories",
+                tool_name="create_setup_directory",
+                path=directory.name,
+                status="error",
+                message="Setup directory path must stay inside the configured repository.",
+            )
+
+        directory_path.mkdir(parents=True, exist_ok=True)
+        return SetupExecutionResult(
+            step="setup_directories",
+            tool_name="create_setup_directory",
+            path=str(directory_path.relative_to(repo_path)),
+            status="success",
+            exit_code=0,
+            message="Setup directory created successfully.",
+        )
+    except Exception as error:
+        return SetupExecutionResult(
+            step="setup_directories",
+            tool_name="create_setup_directory",
+            path=directory.name,
+            status="error",
+            message=f"Failed to create setup directory: {error}",
+        )
+
+
 def _write_repository_setup_file(setup_file: SetupFileSpec) -> SetupExecutionResult:
     try:
         repo_path = _resolve_repository_path()
@@ -642,6 +702,12 @@ def _resolve_repository_path() -> Path:
     if repo_path != workspace_root and workspace_root not in repo_path.parents:
         raise ValueError("Repository path must stay inside the configured workplace folder.")
     return repo_path
+
+
+def _resolve_directory_spec_path(repo_path: Path, directory: DirectorySpec) -> Path:
+    if directory.parent:
+        return (repo_path / directory.parent / directory.name).expanduser().resolve()
+    return (repo_path / directory.name).expanduser().resolve()
 
 
 def _run_structured_agent(agent: Any, agent_input: BaseModel) -> Any:

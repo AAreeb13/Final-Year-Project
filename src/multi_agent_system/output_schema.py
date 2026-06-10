@@ -262,6 +262,76 @@ class EnvironmentSetupExecution(BaseModel):
     summary: str = ""
 
 
+PlanningTaskKind = Literal[
+    "create_file",
+    "create_test_file",
+    "execute_test",
+    "create_integration_test",
+    "execute_integration_test",
+    "review",
+]
+
+
+class PlanningTask(BaseModel):
+    task_id: str
+    kind: PlanningTaskKind
+    relative_path: str | None = None
+    target_component: str
+    target_module: str | None = None
+    description: str
+    depends_on: list[str] = Field(default_factory=list)
+    test_target_task_id: str | None = None
+
+
+class ModulePlanNode(BaseModel):
+    module_name: str
+    implementation_task_id: str
+    test_task_id: str
+    execute_test_task_id: str
+    notes: list[str] = Field(default_factory=list)
+
+
+class ComponentImplementationPlan(BaseModel):
+    component_name: str
+    summary: str
+    module_nodes: list[ModulePlanNode] = Field(default_factory=list)
+    integration_test_task_id: str | None = None
+    execute_integration_test_task_id: str | None = None
+    tasks: list[PlanningTask] = Field(default_factory=list)
+    testing_strategy: str = ""
+    approved: bool = False
+
+    @model_validator(mode="after")
+    def validate_task_tree(self):
+        task_ids = [task.task_id for task in self.tasks]
+        task_id_set = set(task_ids)
+        if len(task_ids) != len(task_id_set):
+            raise ValueError("Planning task ids must be unique")
+
+        for task in self.tasks:
+            missing_dependencies = [task_id for task_id in task.depends_on if task_id not in task_id_set]
+            if missing_dependencies:
+                raise ValueError(
+                    f"Planning task {task.task_id} depends on unknown tasks: {missing_dependencies}"
+                )
+            if task.test_target_task_id is not None and task.test_target_task_id not in task_id_set:
+                raise ValueError(
+                    f"Planning task {task.task_id} targets unknown test task: {task.test_target_task_id}"
+                )
+
+        for node in self.module_nodes:
+            for field_name in ("implementation_task_id", "test_task_id", "execute_test_task_id"):
+                task_id = getattr(node, field_name)
+                if task_id not in task_id_set:
+                    raise ValueError(f"Module node {node.module_name} references unknown task: {task_id}")
+
+        if self.integration_test_task_id and self.integration_test_task_id not in task_id_set:
+            raise ValueError("integration_test_task_id references an unknown task")
+        if self.execute_integration_test_task_id and self.execute_integration_test_task_id not in task_id_set:
+            raise ValueError("execute_integration_test_task_id references an unknown task")
+        return self
+
+
 def _normalize_command_list(value: Any) -> Any:
     if value in (None, ""):
         return []
