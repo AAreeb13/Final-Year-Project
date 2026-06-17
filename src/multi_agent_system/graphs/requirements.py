@@ -90,7 +90,7 @@ class RequirementsStageGraph:
         critic_agent: Any | None = None,
         extractor_runner: AgentRunner | None = None,
         critic_runner: AgentRunner | None = None,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini",
         temperature: float = 0.2,
         max_iterations: int = 2,
     ) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, Callable, Literal, TypedDict, TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -13,12 +14,23 @@ from src.multi_agent_system.output_schema import (
     ComponentExtractionOutput,
     ComponentImplementationPlan,
     EnvironmentSetupPlan,
+    FileWriteResult,
+    ImplementationExecutionResult,
+    ImplementationFilePlan,
+    ImplementationPlan,
+    ImplementationStageOutput,
     ModuleDesignOutput,
     PlanningTask,
+    PlanningStageOutput,
     RepositoryStructure,
     RequirementsStageOutput,
+    TestExecutionResult,
+    TestPlanNode,
 )
 from src.multi_agent_system.store import ProjectStoreRepository
+from src.settings import settings
+from src.tools.docker_code_execution.repo_tool import run_repository_command
+from src.tools.file_system_tools.inspect_repository import inspect_repository
 
 
 ImplementationStatus = Literal["complete", "failed", "running"]
@@ -171,6 +183,455 @@ class ImplementationRunResult(BaseModel):
     repair_attempts: int = 0
 
 
+ExecutionStatus = Literal["complete", "failed", "running"]
+ImplementationFileStatus = Literal["pending", "written", "failed"]
+ExecutionWriterRunner = Callable[[Any, BaseModel], Any]
+RepositoryFileWriter = Callable[[str, str], FileWriteResult]
+RepositoryCommandExecutor = Callable[[list[str], int], Any]
+
+
+IMPLEMENTATION_EXECUTION_WRITER_PROMPT = """
+You are the Implementation Writer in a deterministic SDLC execution graph.
+
+Return exactly one ImplementationWriterOutput for the requested file.
+The graph will write the file and run Docker commands deterministically.
+
+Rules:
+- Return full file content, not a patch.
+- Use the planning file target, related test nodes, requirements, and design context.
+- If previous_test_failure is present, repair only the requested file while preserving intended behavior.
+- Do not claim that you executed commands or wrote files.
+""".strip()
+
+
+class ImplementationWriterInput(BaseModel):
+    project_prompt: str
+    requirements: RequirementsStageOutput | None = None
+    component_extraction: ComponentExtractionOutput | None = None
+    component_decompositions: dict[str, ComponentDecompositionOutput] = Field(default_factory=dict)
+    module_designs: dict[str, ModuleDesignOutput] = Field(default_factory=dict)
+    planning_output: PlanningStageOutput
+    current_file: ImplementationFilePlan
+    related_test_nodes: list[TestPlanNode] = Field(default_factory=list)
+    repository_tree: str = ""
+    previous_test_failure: TestExecutionResult | None = None
+
+
+class ImplementationWriterOutput(BaseModel):
+    relative_path: str
+    content: str
+    target_modules: list[str] = Field(default_factory=list)
+    target_test_nodes: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class ImplementationFileProgress(BaseModel):
+    file_id: str
+    relative_path: str
+    status: ImplementationFileStatus = "pending"
+    repair_attempts: int = 0
+
+
+class ImplementationExecutionState(TypedDict, total=False):
+    project_id: str
+    project_prompt: str
+    requirements: RequirementsStageOutput | None
+    component_extraction: ComponentExtractionOutput | None
+    component_decompositions: dict[str, ComponentDecompositionOutput]
+    module_designs: dict[str, ModuleDesignOutput]
+    repository_structure: RepositoryStructure | None
+    environment_setup: EnvironmentSetupPlan | None
+    planning_output: PlanningStageOutput
+    repository_tree: str
+    file_progress: list[ImplementationFileProgress]
+    current_file_id: str | None
+    current_writer_output: ImplementationWriterOutput | None
+    previous_test_failure: TestExecutionResult | None
+    file_writes: list[FileWriteResult]
+    test_executions: list[TestExecutionResult]
+    max_repair_attempts: int
+    command_timeout_s: int
+    stage_output: ImplementationStageOutput
+    status: ExecutionStatus
+    failure_reason: str
+
+
+class ImplementationExecutionRunResult(BaseModel):
+    status: ExecutionStatus
+    stage_output: ImplementationStageOutput | None = None
+    file_writes: list[FileWriteResult] = Field(default_factory=list)
+    test_executions: list[TestExecutionResult] = Field(default_factory=list)
+    failure_reason: str = ""
+
+
+class ImplementationExecutionGraph:
+    """Executes approved planning.json with deterministic file writes and Docker checks."""
+
+    def __init__(
+        self,
+        writer_agent: Any | None = None,
+        writer_runner: ExecutionWriterRunner | None = None,
+        repository_inspector: Callable[[], Any] | None = None,
+        file_writer: RepositoryFileWriter | None = None,
+        command_executor: RepositoryCommandExecutor | None = None,
+        store_repository: ProjectStoreRepository | None = None,
+        model_name: str = "gpt-5.4-mini"
+,
+        temperature: float = 0.2,
+        command_timeout_s: int = 120,
+        max_repair_attempts: int = 3,
+        verbose: bool = True,
+    ) -> None:
+        self.writer_agent = writer_agent
+        self.writer_runner = writer_runner or _run_structured_agent
+        self.repository_inspector = repository_inspector or _inspect_repository_root
+        self.file_writer = file_writer or _write_repository_file
+        self.command_executor = command_executor or _execute_repository_command
+        self.store_repository = store_repository
+        self.model_name = model_name
+        self.temperature = temperature
+        self.command_timeout_s = command_timeout_s
+        self.max_repair_attempts = max_repair_attempts
+        self.verbose = verbose
+        self.graph = self._build_execution_graph()
+
+    def run(
+        self,
+        project_id: str,
+        project_prompt: str,
+        requirements: RequirementsStageOutput | None,
+        component_extraction: ComponentExtractionOutput | None,
+        component_decompositions: dict[str, ComponentDecompositionOutput],
+        module_designs: dict[str, ModuleDesignOutput],
+        planning_output: PlanningStageOutput,
+        repository_structure: RepositoryStructure | None = None,
+        environment_setup: EnvironmentSetupPlan | None = None,
+    ) -> ImplementationExecutionRunResult:
+        initial_state: ImplementationExecutionState = {
+            "project_id": project_id,
+            "project_prompt": project_prompt,
+            "requirements": requirements,
+            "component_extraction": component_extraction,
+            "component_decompositions": component_decompositions,
+            "module_designs": module_designs,
+            "repository_structure": repository_structure,
+            "environment_setup": environment_setup,
+            "planning_output": planning_output,
+            "file_progress": [
+                ImplementationFileProgress(
+                    file_id=file_plan.file_id,
+                    relative_path=file_plan.relative_path,
+                )
+                for file_plan in planning_output.implementation_plan.files
+            ],
+            "current_file_id": None,
+            "previous_test_failure": None,
+            "file_writes": [],
+            "test_executions": [],
+            "max_repair_attempts": self.max_repair_attempts,
+            "command_timeout_s": self.command_timeout_s,
+            "status": "running",
+        }
+        try:
+            final_state = self.graph.invoke(initial_state)
+            return self._to_result(final_state)
+        except Exception as error:
+            return ImplementationExecutionRunResult(
+                status="failed",
+                failure_reason=_format_exception(error),
+            )
+
+    def _build_execution_graph(self):
+        graph_builder = StateGraph(ImplementationExecutionState)
+        graph_builder.add_node("inspect_repository", self.inspect_repository)
+        graph_builder.add_node("select_next_action", self.select_next_action)
+        graph_builder.add_node("code_writer", self.code_writer)
+        graph_builder.add_node("deterministic_file_write", self.deterministic_file_write)
+        graph_builder.add_node("docker_test_executor", self.docker_test_executor)
+        graph_builder.add_node("repair_or_continue", self.repair_or_continue)
+        graph_builder.add_node("final_verification", self.final_verification)
+        graph_builder.add_node("complete", self.complete)
+        graph_builder.add_node("failed", self.failed)
+
+        graph_builder.add_edge(START, "inspect_repository")
+        graph_builder.add_edge("inspect_repository", "select_next_action")
+        graph_builder.add_conditional_edges(
+            "select_next_action",
+            self.route_after_select_next_action,
+            {
+                "code_writer": "code_writer",
+                "final_verification": "final_verification",
+                "failed": "failed",
+            },
+        )
+        graph_builder.add_edge("code_writer", "deterministic_file_write")
+        graph_builder.add_conditional_edges(
+            "deterministic_file_write",
+            self.route_after_file_write,
+            {
+                "docker_test_executor": "docker_test_executor",
+                "failed": "failed",
+            },
+        )
+        graph_builder.add_edge("docker_test_executor", "repair_or_continue")
+        graph_builder.add_conditional_edges(
+            "repair_or_continue",
+            self.route_after_repair_or_continue,
+            {
+                "code_writer": "code_writer",
+                "select_next_action": "select_next_action",
+                "failed": "failed",
+            },
+        )
+        graph_builder.add_conditional_edges(
+            "final_verification",
+            self.route_after_final_verification,
+            {
+                "complete": "complete",
+                "failed": "failed",
+            },
+        )
+        graph_builder.add_edge("complete", END)
+        graph_builder.add_edge("failed", END)
+        return graph_builder.compile()
+
+    def inspect_repository(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("inspect_repository")
+        return {
+            **state,
+            "repository_tree": _extract_repository_tree(self.repository_inspector()),
+        }
+
+    def select_next_action(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("select_next_action")
+        next_progress = _next_pending_file(state.get("file_progress", []))
+        return {
+            **state,
+            "current_file_id": next_progress.file_id if next_progress else None,
+        }
+
+    @staticmethod
+    def route_after_select_next_action(state: ImplementationExecutionState) -> str:
+        if state.get("status") == "failed":
+            return "failed"
+        if state.get("current_file_id") is None:
+            return "final_verification"
+        return "code_writer"
+
+    def code_writer(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("code_writer")
+        current_file = _require_current_file(state)
+        writer_input = ImplementationWriterInput(
+            project_prompt=state["project_prompt"],
+            requirements=state.get("requirements"),
+            component_extraction=state.get("component_extraction"),
+            component_decompositions=state.get("component_decompositions", {}),
+            module_designs=state.get("module_designs", {}),
+            planning_output=state["planning_output"],
+            current_file=current_file,
+            related_test_nodes=_related_test_nodes(
+                current_file,
+                state["planning_output"].test_plan.nodes,
+            ),
+            repository_tree=state.get("repository_tree", ""),
+            previous_test_failure=state.get("previous_test_failure"),
+        )
+        raw_output = self.writer_runner(self._get_writer_agent(), writer_input)
+        writer_output = _coerce_model(raw_output, ImplementationWriterOutput)
+        if writer_output.relative_path != current_file.relative_path:
+            writer_output = writer_output.model_copy(update={"relative_path": current_file.relative_path})
+        return {
+            **state,
+            "current_writer_output": writer_output,
+        }
+
+    def deterministic_file_write(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("deterministic_file_write")
+        writer_output = state["current_writer_output"]
+        if writer_output is None:
+            return {
+                **state,
+                "status": "failed",
+                "failure_reason": "Writer output was missing.",
+            }
+        write_result = self.file_writer(writer_output.relative_path, writer_output.content)
+        file_writes = [*state.get("file_writes", []), write_result]
+        if write_result.status != "success":
+            return {
+                **state,
+                "file_writes": file_writes,
+                "status": "failed",
+                "failure_reason": write_result.message or f"Failed to write {writer_output.relative_path}",
+            }
+        return {
+            **state,
+            "file_writes": file_writes,
+            "file_progress": _update_file_status(
+                state.get("file_progress", []),
+                state.get("current_file_id"),
+                "written",
+            ),
+        }
+
+    @staticmethod
+    def route_after_file_write(state: ImplementationExecutionState) -> str:
+        if state.get("status") == "failed":
+            return "failed"
+        return "docker_test_executor"
+
+    def docker_test_executor(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("docker_test_executor")
+        current_file = _require_current_file(state)
+        command = _targeted_test_command(current_file, state["planning_output"])
+        if command is None:
+            return {
+                **state,
+                "previous_test_failure": None,
+            }
+        result = _coerce_test_execution_result(
+            self.command_executor(command, state.get("command_timeout_s", self.command_timeout_s)),
+            command,
+        )
+        test_executions = [*state.get("test_executions", []), result]
+        if result.status != "success":
+            return {
+                **state,
+                "test_executions": test_executions,
+                "previous_test_failure": result,
+            }
+        return {
+            **state,
+            "test_executions": test_executions,
+            "previous_test_failure": None,
+        }
+
+    def repair_or_continue(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("repair_or_continue")
+        if state.get("previous_test_failure") is None:
+            return state
+        current_file_id = state.get("current_file_id")
+        progress = _find_file_progress(state.get("file_progress", []), current_file_id)
+        repair_attempts = (progress.repair_attempts if progress else 0) + 1
+        if repair_attempts > state.get("max_repair_attempts", self.max_repair_attempts):
+            return {
+                **state,
+                "file_progress": _update_file_status(
+                    state.get("file_progress", []),
+                    current_file_id,
+                    "failed",
+                    repair_attempts=repair_attempts,
+                ),
+                "status": "failed",
+                "failure_reason": (
+                    f"Maximum repair attempts exceeded for {current_file_id}: "
+                    f"{repair_attempts}/{state.get('max_repair_attempts', self.max_repair_attempts)}"
+                ),
+            }
+        return {
+            **state,
+            "file_progress": _update_file_status(
+                state.get("file_progress", []),
+                current_file_id,
+                "pending",
+                repair_attempts=repair_attempts,
+            ),
+        }
+
+    @staticmethod
+    def route_after_repair_or_continue(state: ImplementationExecutionState) -> str:
+        if state.get("status") == "failed":
+            return "failed"
+        if state.get("previous_test_failure") is not None:
+            return "code_writer"
+        return "select_next_action"
+
+    def final_verification(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("final_verification")
+        commands = _final_verification_commands(
+            state["planning_output"],
+            state.get("environment_setup"),
+        )
+        test_executions = list(state.get("test_executions", []))
+        for command in commands:
+            result = _coerce_test_execution_result(
+                self.command_executor(command, state.get("command_timeout_s", self.command_timeout_s)),
+                command,
+            )
+            test_executions.append(result)
+            if result.status != "success":
+                return {
+                    **state,
+                    "test_executions": test_executions,
+                    "status": "failed",
+                    "failure_reason": result.summary or result.stderr or f"Final verification failed: {' '.join(command)}",
+                }
+        return {
+            **state,
+            "test_executions": test_executions,
+            "status": "complete",
+        }
+
+    @staticmethod
+    def route_after_final_verification(state: ImplementationExecutionState) -> str:
+        if state.get("status") == "complete":
+            return "complete"
+        return "failed"
+
+    def complete(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("complete")
+        stage_output = _build_implementation_stage_output(state, approved=True)
+        self._save_implementation(state, stage_output)
+        return {
+            **state,
+            "stage_output": stage_output,
+            "status": "complete",
+        }
+
+    def failed(self, state: ImplementationExecutionState) -> ImplementationExecutionState:
+        self._announce_node("failed")
+        stage_output = _build_implementation_stage_output(state, approved=False)
+        self._save_implementation(state, stage_output)
+        return {
+            **state,
+            "stage_output": stage_output,
+            "status": "failed",
+        }
+
+    def _get_writer_agent(self) -> Any:
+        if self.writer_agent is None:
+            self.writer_agent = AgentFactory.build_agent(
+                prompt=IMPLEMENTATION_EXECUTION_WRITER_PROMPT,
+                tools=[],
+                temperature=self.temperature,
+                model_name=self.model_name,
+                response_format=ImplementationWriterOutput,
+            )
+        return self.writer_agent
+
+    def _save_implementation(
+        self,
+        state: ImplementationExecutionState,
+        stage_output: ImplementationStageOutput,
+    ) -> None:
+        if self.store_repository is None or not state.get("project_id"):
+            return
+        self.store_repository.save_implementation(state["project_id"], stage_output)
+
+    def _announce_node(self, node_name: str) -> None:
+        if self.verbose:
+            print(f"Implementation execution node: {node_name}")
+
+    @staticmethod
+    def _to_result(state: ImplementationExecutionState) -> ImplementationExecutionRunResult:
+        return ImplementationExecutionRunResult(
+            status=state.get("status", "failed"),
+            stage_output=state.get("stage_output"),
+            file_writes=state.get("file_writes", []),
+            test_executions=state.get("test_executions", []),
+            failure_reason=state.get("failure_reason", ""),
+        )
+
+
 class ImplementationPlanningGraph:
     """Planning Agent -> Writer -> Executor graph for one component."""
 
@@ -183,7 +644,8 @@ class ImplementationPlanningGraph:
         writer_runner: WriterRunner | None = None,
         executor_runner: ExecutorRunner | None = None,
         planning_feedback_callback: PlanningFeedbackCallback | None = None,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini"
+,
         temperature: float = 0.2,
     ) -> None:
         self.planning_agent = planning_agent
@@ -543,6 +1005,64 @@ def build_implementation_graph(**kwargs: Any) -> ImplementationPlanningGraph:
     return ImplementationPlanningGraph(**kwargs)
 
 
+def build_implementation_execution_graph(**kwargs: Any) -> ImplementationExecutionGraph:
+    return ImplementationExecutionGraph(**kwargs)
+
+
+def _load_execution_inputs_from_store(
+    project_id: str,
+    store_repository: ProjectStoreRepository | None = None,
+) -> dict[str, Any]:
+    repository = store_repository or ProjectStoreRepository()
+    store = repository.load_project(project_id)
+    planning_output = repository.load_planning(project_id)
+
+    if store.requirements is None:
+        raise RuntimeError(f"Project {project_id} does not have approved requirements in the store.")
+    if store.component_extraction is None:
+        raise RuntimeError(f"Project {project_id} does not have component extraction in the store.")
+    if not store.module_designs:
+        raise RuntimeError(f"Project {project_id} does not have module designs in the store.")
+
+    return {
+        "project_id": store.project_id,
+        "project_prompt": store.project_prompt,
+        "requirements": store.requirements,
+        "component_extraction": store.component_extraction,
+        "component_decompositions": store.component_decompositions,
+        "module_designs": store.module_designs,
+        "planning_output": planning_output,
+        "repository_structure": store.repository_structure,
+        "environment_setup": store.environment_setup,
+    }
+
+
+def _print_loaded_execution_inputs(inputs: dict[str, Any]) -> None:
+    planning_output = inputs["planning_output"]
+    print("\nLoaded implementation execution inputs")
+    print(f"Project id: {inputs['project_id']}")
+    print(f"Project prompt: {inputs['project_prompt']}")
+    print(f"Implementation files: {len(planning_output.implementation_plan.files)}")
+    print(f"Implementation steps: {len(planning_output.implementation_plan.steps)}")
+    print(f"Test plan nodes: {len(planning_output.test_plan.nodes)}")
+    print(f"Test commands: {len(planning_output.test_plan.commands)}")
+    print(f"Module designs: {len(inputs.get('module_designs', {}))}")
+    print(f"Environment setup loaded: {inputs.get('environment_setup') is not None}")
+
+
+def _print_execution_result(result: ImplementationExecutionRunResult) -> None:
+    print("\nImplementation execution result")
+    print(f"Status: {result.status}")
+    if result.failure_reason:
+        print(f"Failure reason: {result.failure_reason}")
+    print(f"File writes: {len(result.file_writes)}")
+    for file_write in result.file_writes:
+        print(f"- {file_write.relative_path}: {file_write.status}")
+    print(f"Test executions: {len(result.test_executions)}")
+    for test_execution in result.test_executions:
+        print(f"- {' '.join(test_execution.command)}: {test_execution.status}")
+
+
 def _load_implementation_inputs_from_store(
     project_id: str = "todo_cli",
     target_component: str | None = None,
@@ -725,39 +1245,23 @@ def _interactive_planning_feedback(
 
 
 def main() -> None:
-    project_id = input("Project id to test implementation planning graph [todo_cli]: ").strip() or "todo_cli"
+    project_id = input("Project id to run implementation execution graph [todo_cli]: ").strip() or "todo_cli"
     store_repository = ProjectStoreRepository()
-    store = store_repository.load_project(project_id)
-
-    available_components = sorted(set(store.component_decompositions) | set(store.module_designs))
-    if available_components:
-        print("\nAvailable components:")
-        for component_name in available_components:
-            print(f"- {component_name}")
-        default_component = available_components[0]
-        target_component = (
-            input(f"Target component [{default_component}]: ").strip()
-            or default_component
-        )
-    else:
-        target_component = input("Target component: ").strip()
-
-    inputs = _load_implementation_inputs_from_store(
+    inputs = _load_execution_inputs_from_store(
         project_id=project_id,
-        target_component=target_component,
         store_repository=store_repository,
     )
-    _print_loaded_implementation_inputs(inputs)
+    _print_loaded_execution_inputs(inputs)
 
-    choice = input("\nRun implementation planning graph with these inputs? [y/N]: ").strip().lower()
+    choice = input("\nRun implementation execution graph with these inputs? [y/N]: ").strip().lower()
     if choice not in {"y", "yes"}:
         return
 
     graph_inputs = {key: value for key, value in inputs.items() if key != "project_id"}
-    result = build_implementation_graph(
-        planning_feedback_callback=_interactive_planning_feedback,
-    ).run(**graph_inputs)
-    _print_implementation_result(result, module_design=inputs["module_design"])
+    result = build_implementation_execution_graph(
+        store_repository=store_repository,
+    ).run(project_id=project_id, **graph_inputs)
+    _print_execution_result(result)
 
 
 def _run_structured_agent(agent: Any, agent_input: BaseModel) -> Any:
@@ -1009,6 +1513,219 @@ def _repair_task_id_for_execution_failure(
 def _all_tasks_completed(state: ImplementationState) -> bool:
     task_progress = state.get("task_progress", [])
     return bool(task_progress) and all(progress.status == "completed" for progress in task_progress)
+
+
+def _inspect_repository_root() -> Any:
+    return inspect_repository.invoke(
+        {
+            "relative_path": ".",
+            "max_depth": 5,
+            "max_entries": 300,
+            "extra_ignored_names": [".git", ".venv", "__pycache__", "node_modules"],
+        }
+    )
+
+
+def _execute_repository_command(command: list[str], timeout_s: int) -> Any:
+    return run_repository_command.invoke({"command": command, "timeout_s": timeout_s})
+
+
+def _write_repository_file(relative_path: str, content: str) -> FileWriteResult:
+    try:
+        repo_root = _resolve_repository_root()
+        file_path = (repo_root / relative_path).expanduser().resolve()
+        if file_path != repo_root and repo_root not in file_path.parents:
+            return FileWriteResult(
+                relative_path=relative_path,
+                status="error",
+                message="Implementation file path must stay inside the configured repository.",
+            )
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return FileWriteResult(
+            relative_path=relative_path,
+            status="success",
+            message="File written successfully.",
+        )
+    except Exception as error:
+        return FileWriteResult(
+            relative_path=relative_path,
+            status="error",
+            message=f"Failed to write file: {error}",
+        )
+
+
+def _resolve_repository_root() -> Path:
+    if settings.WORKPLACE_FOLDER is None:
+        raise ValueError("WORKPLACE_FOLDER must be set in the .env file.")
+    if settings.REPO_NAME is None:
+        raise ValueError("REPO_NAME must be set in the .env file.")
+    workspace_root = Path(settings.WORKPLACE_FOLDER).expanduser().resolve()
+    repo_root = (workspace_root / settings.REPO_NAME).expanduser().resolve()
+    if repo_root != workspace_root and workspace_root not in repo_root.parents:
+        raise ValueError("Repository path must stay inside the configured workspace.")
+    return repo_root
+
+
+def _extract_repository_tree(value: Any) -> str:
+    if isinstance(value, dict):
+        return str(value.get("tree") or value.get("message") or value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return value
+        return _extract_repository_tree(parsed)
+    return str(value)
+
+
+def _next_pending_file(progress_items: list[ImplementationFileProgress]) -> ImplementationFileProgress | None:
+    for progress in progress_items:
+        if progress.status == "pending":
+            return progress
+    return None
+
+
+def _find_file_progress(
+    progress_items: list[ImplementationFileProgress],
+    file_id: str | None,
+) -> ImplementationFileProgress | None:
+    if file_id is None:
+        return None
+    for progress in progress_items:
+        if progress.file_id == file_id:
+            return progress
+    return None
+
+
+def _update_file_status(
+    progress_items: list[ImplementationFileProgress],
+    file_id: str | None,
+    status: ImplementationFileStatus,
+    repair_attempts: int | None = None,
+) -> list[ImplementationFileProgress]:
+    updated = []
+    for progress in progress_items:
+        if progress.file_id != file_id:
+            updated.append(progress)
+            continue
+        update_values: dict[str, Any] = {"status": status}
+        if repair_attempts is not None:
+            update_values["repair_attempts"] = repair_attempts
+        updated.append(progress.model_copy(update=update_values))
+    return updated
+
+
+def _require_current_file(state: ImplementationExecutionState) -> ImplementationFilePlan:
+    current_file_id = state.get("current_file_id")
+    for file_plan in state["planning_output"].implementation_plan.files:
+        if file_plan.file_id == current_file_id:
+            return file_plan
+    raise ValueError(f"Current implementation file is not set or unknown: {current_file_id}")
+
+
+def _related_test_nodes(
+    file_plan: ImplementationFilePlan,
+    test_nodes: list[TestPlanNode],
+) -> list[TestPlanNode]:
+    file_modules = set(file_plan.modules)
+    return [
+        node
+        for node in test_nodes
+        if file_modules.intersection(node.target_modules)
+    ]
+
+
+def _targeted_test_command(
+    file_plan: ImplementationFilePlan,
+    planning_output: PlanningStageOutput,
+) -> list[str] | None:
+    path = file_plan.relative_path
+    path_parts = Path(path).parts
+    file_name = Path(path).name
+    if not (path_parts and path_parts[0] == "tests") and "test" not in file_name:
+        return None
+    if planning_output.test_plan.testing_framework.lower() == "pytest":
+        return ["pytest", path]
+    for command in _normalise_commands(planning_output.test_plan.commands):
+        if "pytest" in command:
+            return [*command, path] if path not in command else command
+    return ["pytest", path]
+
+
+def _final_verification_commands(
+    planning_output: PlanningStageOutput,
+    environment_setup: EnvironmentSetupPlan | None,
+) -> list[list[str]]:
+    commands = _normalise_commands(planning_output.test_plan.commands)
+    if commands:
+        return commands
+    if environment_setup and environment_setup.test_commands:
+        return environment_setup.test_commands
+    return [["pytest"]]
+
+
+def _normalise_commands(commands: list[Any]) -> list[list[str]]:
+    normalised: list[list[str]] = []
+    for command in commands:
+        if isinstance(command, str):
+            normalised.append(command.split())
+        elif isinstance(command, list):
+            normalised.append([str(part) for part in command])
+    return normalised
+
+
+def _coerce_test_execution_result(value: Any, command: list[str]) -> TestExecutionResult:
+    if isinstance(value, TestExecutionResult):
+        return value
+    if isinstance(value, dict):
+        return TestExecutionResult(
+            command=command,
+            status=str(value.get("status") or "unknown"),
+            exit_code=value.get("exit_code"),
+            stdout=str(value.get("stdout") or ""),
+            stderr=str(value.get("stderr") or ""),
+            message=str(value.get("message") or ""),
+            summary=str(value.get("summary") or value.get("message") or ""),
+        )
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return TestExecutionResult(
+                command=command,
+                status="success",
+                stdout=value,
+                summary=value[:200],
+            )
+        return _coerce_test_execution_result(parsed, command)
+    return TestExecutionResult(
+        command=command,
+        status="success",
+        summary=str(value),
+    )
+
+
+def _build_implementation_stage_output(
+    state: ImplementationExecutionState,
+    approved: bool,
+) -> ImplementationStageOutput:
+    status = "complete" if approved else "failed"
+    execution = ImplementationExecutionResult(
+        file_writes=state.get("file_writes", []),
+        test_executions=state.get("test_executions", []),
+        status=status,
+        summary=(
+            "Implementation execution completed successfully."
+            if approved
+            else state.get("failure_reason", "Implementation execution failed.")
+        ),
+    )
+    return ImplementationStageOutput(
+        execution=execution,
+        approved=approved,
+        failure_reason="" if approved else state.get("failure_reason", ""),
+    )
 
 
 def _format_exception(error: Exception) -> str:

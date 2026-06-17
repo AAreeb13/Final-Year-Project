@@ -151,6 +151,7 @@ class DesignStateGraph:
         max_format_retries: int = 3,
         model_name: str = "gpt-4o-mini",
         temperature: float = 0.2,
+        verbose: bool = False,
     ) -> None:
         self.architect_agent = architect_agent
         self.critic_agent = critic_agent
@@ -164,6 +165,7 @@ class DesignStateGraph:
         self.format_error_callback = format_error_callback
         self.model_name = model_name
         self.temperature = temperature
+        self.verbose = verbose
         self.graph = self._build_design_graph()
 
     def run(
@@ -212,6 +214,11 @@ class DesignStateGraph:
         ):
             while True:
                 try:
+                    self._log(
+                        "run",
+                        f"task={_format_design_task(task)} "
+                        f"feedback={bool(current_state.get('critic_feedback'))}",
+                    )
                     final_state = self.graph.invoke(current_state)
                     return self._to_result(final_state)
                 except Exception as exc:
@@ -230,6 +237,13 @@ class DesignStateGraph:
                                 exc=exc,
                             )
                         length_limit_failures += 1
+                        self._log(
+                            "retry",
+                            (
+                                "length_limit "
+                                f"attempt={length_limit_failures}/{self.max_length_limit_retries}"
+                            ),
+                        )
                         current_state = {
                             **current_state,
                             "critic_feedback": _append_feedback(
@@ -244,6 +258,10 @@ class DesignStateGraph:
 
                     format_failures += 1
                     if format_failures > self.max_format_retries:
+                        self._log(
+                            "failed",
+                            f"format attempts exceeded ({self.max_format_retries})",
+                        )
                         return _build_design_failure_result(
                             task=task,
                             question_answer_context=question_answer_context or [],
@@ -259,12 +277,17 @@ class DesignStateGraph:
                         attempt=format_failures,
                         max_attempts=self.max_format_retries,
                     )
+                    self._log(
+                        "retry",
+                        f"format attempt={format_failures}/{self.max_format_retries}",
+                    )
                     decision = (
                         self.format_error_callback("architect_design", failure_details)
                         if self.format_error_callback is not None
                         else FormatErrorDecision(retry=format_failures <= self.max_format_retries)
                     )
                     if not decision.retry:
+                        self._log("failed", "format retry declined")
                         return _build_design_failure_result(
                             task=task,
                             question_answer_context=question_answer_context or [],
@@ -313,6 +336,7 @@ class DesignStateGraph:
         return graph_builder.compile()
 
     def architect_design(self, state: DesignState) -> DesignState:
+        self._log("architect_design", f"start {_format_design_task(state['task'])}")
         architect_input = ArchitectInput(
             project_prompt=state["project_prompt"],
             requirements=state["requirements"],
@@ -330,12 +354,20 @@ class DesignStateGraph:
             architect_output,
             state["task"],
         )
+        self._log(
+            "architect_design",
+            f"output {_summarise_architect_output(architect_output)}",
+        )
         approval = self.approval_callback(
             "architect_design",
             architect_input.model_dump(mode="json"),
             architect_output.model_dump(mode="json"),
         )
         if not approval.approved:
+            self._log(
+                "architect_design",
+                f"approval rejected: {_compact_design_text(approval.feedback)}",
+            )
             critic_output = DesignCriticOutput(
                 approved=False,
                 verdict="Architect output rejected by user approval.",
@@ -355,6 +387,7 @@ class DesignStateGraph:
         }
 
     def critic_review(self, state: DesignState) -> DesignState:
+        self._log("critic_review", f"start {_format_design_task(state['task'])}")
         critic_input = DesignCriticInput(
             project_prompt=state["project_prompt"],
             requirements=state["requirements"],
@@ -367,6 +400,15 @@ class DesignStateGraph:
             critic_input,
         )
         critic_output = _coerce_model(raw_output, DesignCriticOutput)
+        self._log(
+            "critic_review",
+            (
+                f"approved={critic_output.approved} "
+                f"questions={len(critic_output.questions)} "
+                f"changes={len(critic_output.required_changes)} "
+                f"verdict={_compact_design_text(critic_output.verdict)}"
+            ),
+        )
         approval = self.approval_callback(
             "critic_review",
             critic_input.model_dump(mode="json"),
@@ -374,6 +416,7 @@ class DesignStateGraph:
         )
         if not approval.approved:
             feedback = approval.feedback or "Critic output rejected by user approval."
+            self._log("critic_review", f"approval rejected: {_compact_design_text(feedback)}")
             critic_output.approved = False
             critic_output.feedback = _append_feedback(critic_output.feedback, feedback)
             if feedback not in critic_output.required_changes:
@@ -412,8 +455,8 @@ class DesignStateGraph:
             return "complete"
         return "needs_revision"
 
-    @staticmethod
-    def complete(state: DesignState) -> DesignState:
+    def complete(self, state: DesignState) -> DesignState:
+        self._log("complete", _format_design_task(state["task"]))
         critic_output = state["critic_output"]
         critic_verdict = critic_output.verdict
         if state.get("approval_override_at") == "critic_review" and not critic_output.approved:
@@ -434,8 +477,8 @@ class DesignStateGraph:
             "status": "complete",
         }
 
-    @staticmethod
-    def needs_revision(state: DesignState) -> DesignState:
+    def needs_revision(self, state: DesignState) -> DesignState:
+        self._log("needs_revision", _format_design_task(state["task"]))
         critic_output = state["critic_output"]
         stage_output = DesignStageOutput(
             task=state["task"],
@@ -486,6 +529,11 @@ class DesignStateGraph:
             failure_reason=state.get("failure_reason", ""),
         )
 
+    def _log(self, node_name: str, message: str = "") -> None:
+        if self.verbose:
+            suffix = f": {message}" if message else ""
+            print(f"Design node: {node_name}{suffix}")
+
 
 def build_design_graph(**kwargs: Any) -> DesignStateGraph:
     return DesignStateGraph(**kwargs)
@@ -497,6 +545,41 @@ def _append_feedback(existing_feedback: str, new_feedback: str) -> str:
     if not new_feedback:
         return existing_feedback
     return f"{existing_feedback}\n\nUser approval feedback: {new_feedback}"
+
+
+def _format_design_task(task: DesignTask) -> str:
+    if task.target_component:
+        return f"{task.kind} target={task.target_component}"
+    return task.kind
+
+
+def _summarise_architect_output(architect_output: ArchitectOutput) -> str:
+    if architect_output.component_extraction is not None:
+        artifact = architect_output.component_extraction
+        return (
+            f"components={len(artifact.components)} "
+            f"relationships={len(artifact.high_level_architecture.relationships)} "
+            f"technologies={len(artifact.high_level_architecture.technologies)}"
+        )
+    if architect_output.component_decomposition is not None:
+        artifact = architect_output.component_decomposition
+        return f"modules={len(artifact.modules)} notes={len(artifact.notes)}"
+    if architect_output.module_design is not None:
+        artifact = architect_output.module_design
+        signature_count = sum(len(module.signatures) for module in artifact.modules)
+        return (
+            f"modules={len(artifact.modules)} "
+            f"signatures={signature_count} "
+            f"edges={len(artifact.dependency_graph.edges)}"
+        )
+    return "artifact=missing"
+
+
+def _compact_design_text(value: str, *, limit: int = 120) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(0, limit - 3)] + "..."
 
 
 def _build_design_failure_result(

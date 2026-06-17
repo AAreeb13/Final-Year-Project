@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Literal, TypedDict, TypeVar
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -207,7 +207,7 @@ class EnvironmentStageGraph:
         approval_callback: ApprovalCallback | None = None,
         failure_advice_callback: FailureAdviceCallback | None = None,
         store_repository: ProjectStoreRepository | None = None,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini",
         temperature: float = 0.2,
         max_revisions: int = 5,
         command_timeout_s: int = DEFAULT_COMMAND_TIMEOUT_S,
@@ -706,7 +706,11 @@ def _resolve_repository_path() -> Path:
 
 def _resolve_directory_spec_path(repo_path: Path, directory: DirectorySpec) -> Path:
     if directory.parent:
-        return (repo_path / directory.parent / directory.name).expanduser().resolve()
+        parent_path = PurePosixPath(directory.parent)
+        name_path = PurePosixPath(directory.name)
+        if name_path.parts[: len(parent_path.parts)] == parent_path.parts:
+            return (repo_path / name_path).expanduser().resolve()
+        return (repo_path / parent_path / name_path).expanduser().resolve()
     return (repo_path / directory.name).expanduser().resolve()
 
 
