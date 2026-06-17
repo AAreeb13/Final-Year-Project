@@ -1,12 +1,15 @@
 
 import uuid
 
-from src.tools.docker_code_execution.tool import run_in_container, stop_container
+from src.tools.docker_code_execution.repo_tool import run_repository_command
+from src.tools.docker_code_execution.tool import stop_container
 
 from src.agents.AgentFactory import AgentFactory
 from src.agents.human_approval_runner import run_with_human_approval
-from src.tools.file_system_tools.inspect_file import inspect_file
-from src.tools.file_system_tools.inspect_workplace import inspect_folder_structure
+from src.tools.file_system_tools.inspect_repository import (
+    inspect_repository,
+    inspect_repository_file,
+)
 
 
 def load_code_executor_system_prompt() -> str:
@@ -16,9 +19,9 @@ def load_code_executor_system_prompt() -> str:
 def build_code_executor_agent():
     prompt = load_code_executor_system_prompt()
     tools = [
-        inspect_folder_structure,
-        inspect_file,
-        run_in_container,
+        inspect_repository,
+        inspect_repository_file,
+        run_repository_command,
         stop_container,
     ]
     return AgentFactory.build_agent_with_HITLmiddleware_InMemCheckpointer(
