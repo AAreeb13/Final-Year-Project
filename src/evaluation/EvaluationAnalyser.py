@@ -46,10 +46,170 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         guidance="How much of the reference functional and non-functional requirements were recovered?",
     ),
     MetricDefinition(
+        metric_id="requirement_extraction.requirements_precision",
+        category="Requirement Extraction",
+        title="Requirements Precision",
+        max_score=100,
+        unit="percent",
+        guidance="How much of the generated requirements are valid against the reference task?",
+    ),
+    MetricDefinition(
+        metric_id="requirement_extraction.constraint_capture_rate",
+        category="Requirement Extraction",
+        title="Constraint Capture Rate",
+        max_score=100,
+        unit="percent",
+        guidance="How many reference constraints were captured by the system?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.component_recall",
+        category="Quantitative Architecture",
+        title="Component Recall",
+        max_score=100,
+        unit="percent",
+        guidance="How many reference components were recovered?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.component_precision",
+        category="Quantitative Architecture",
+        title="Component Precision",
+        max_score=100,
+        unit="percent",
+        guidance="How many generated components are valid reference components?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.module_recall",
+        category="Quantitative Architecture",
+        title="Module Recall",
+        max_score=100,
+        unit="percent",
+        guidance="How many reference modules were recovered?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.module_precision",
+        category="Quantitative Architecture",
+        title="Module Precision",
+        max_score=100,
+        unit="percent",
+        guidance="How many generated modules are valid reference modules?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.dependency_recall",
+        category="Quantitative Architecture",
+        title="Dependency Recall",
+        max_score=100,
+        unit="percent",
+        guidance="How many expected dependency edges were recovered?",
+    ),
+    MetricDefinition(
+        metric_id="architecture.requirement_to_component_coverage",
+        category="Quantitative Architecture",
+        title="Requirement-to-Component Coverage",
+        max_score=100,
+        unit="percent",
+        guidance="How many reference requirements are traceably represented by generated components?",
+    ),
+    MetricDefinition(
+        metric_id="repository.repository_structure_accuracy",
+        category="Repository Structure",
+        title="Repository Structure Accuracy",
+        max_score=100,
+        unit="percent",
+        guidance="How closely does the generated repository structure match the reference structure?",
+    ),
+    MetricDefinition(
+        metric_id="repository.repository_standard",
+        category="Repository Structure",
+        title="Repository Standard",
+        max_score=10,
+        unit="score",
+        guidance="How well organised, conventional, and navigable is the generated repository?",
+    ),
+    MetricDefinition(
+        metric_id="execution.build_success_rate",
+        category="Execution",
+        title="Build Success Rate",
+        max_score=100,
+        unit="percent",
+        guidance="What proportion of build/setup commands succeeded without manual fixes?",
+    ),
+    MetricDefinition(
+        metric_id="execution.test_pass_rate",
+        category="Execution",
+        title="Test Pass Rate",
+        max_score=100,
+        unit="percent",
+        guidance="What proportion of test commands passed?",
+    ),
+    MetricDefinition(
+        metric_id="test_coverage.test_coverage_score",
+        category="Test Coverage",
+        title="Test Coverage Score",
+        max_score=100,
+        unit="percent",
+        guidance="How much of the expected behaviour is covered by the generated or planned tests?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.completion_rate",
+        category="System Efficiency",
+        title="Completion Rate",
+        max_score=100,
+        unit="percent",
+        guidance="Did the system produce a complete final project output for the task?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.iteration_count",
+        category="System Efficiency",
+        title="Iteration Count",
+        max_score=1000,
+        unit="count",
+        guidance="How many agent iterations or major steps were required?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.tool_call_count",
+        category="System Efficiency",
+        title="Tool Call Count",
+        max_score=1000,
+        unit="count",
+        guidance="How many external tool calls were made during generation, implementation, testing, or repair?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.execution_failure_count",
+        category="System Efficiency",
+        title="Execution Failure Count",
+        max_score=1000,
+        unit="count",
+        guidance="How many build, run, or test attempts failed?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.repair_success_rate",
+        category="System Efficiency",
+        title="Repair Success Rate",
+        max_score=100,
+        unit="percent",
+        guidance="What proportion of detected errors were successfully repaired by the system?",
+    ),
+    MetricDefinition(
+        metric_id="system_efficiency.trace_consistency",
+        category="System Efficiency",
+        title="Trace Consistency",
+        max_score=100,
+        unit="percent",
+        guidance="How consistent is the final implementation with the earlier requirements, design, and implementation plan?",
+    ),
+    MetricDefinition(
+        metric_id="software_design.solid_violations",
+        category="Quantitative Architecture",
+        title="SOLID Principle Violations",
+        max_score=1000,
+        unit="count",
+        guidance="How many clear SOLID principle violations are present?",
+    ),
+    MetricDefinition(
         metric_id="high_level_architecture.architecture_elements",
         category="High Level Architecture",
         title="Components, Relationships, and Technology",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did it identify the expected components, relationships, and relevant technologies?",
     ),
@@ -57,7 +217,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="high_level_architecture.modules_in_components",
         category="High Level Architecture",
         title="Modules in Components",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did it identify the important modules and place them in sensible components?",
     ),
@@ -65,7 +225,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="high_level_architecture.module_dependencies",
         category="High Level Architecture",
         title="Dependencies Between Modules",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did it identify meaningful dependencies between the modules?",
     ),
@@ -73,7 +233,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="software_design.design_principles",
         category="Software Design",
         title="Design Principles",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did the design avoid clear violations of general design principles?",
     ),
@@ -81,7 +241,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="software_design.solid",
         category="Software Design",
         title="SOLID",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did the design respect SOLID principles where they apply?",
     ),
@@ -89,7 +249,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="software_design.design_patterns",
         category="Software Design",
         title="Design Patterns Used and Identified",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Were useful design patterns used or identified without being forced?",
     ),
@@ -97,15 +257,39 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="software_design.separation_of_concerns",
         category="Software Design",
         title="Separation of Concerns at Module Level",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Are module responsibilities distinct and appropriately scoped?",
+    ),
+    MetricDefinition(
+        metric_id="software_design.coupling",
+        category="Software Design",
+        title="Coupling",
+        max_score=10,
+        unit="score",
+        guidance="Are dependencies limited, justified, and free from unnecessary cycles?",
+    ),
+    MetricDefinition(
+        metric_id="software_design.cohesion",
+        category="Software Design",
+        title="Cohesion",
+        max_score=10,
+        unit="score",
+        guidance="Does each component or module have a focused and internally consistent responsibility?",
+    ),
+    MetricDefinition(
+        metric_id="software_design.maintainability",
+        category="Software Design",
+        title="Maintainability",
+        max_score=10,
+        unit="score",
+        guidance="Is the design and implementation understandable and likely to support future change?",
     ),
     MetricDefinition(
         metric_id="code_hygiene.code_hygiene",
         category="Code Hygiene",
         title="Code Hygiene",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Judge naming, structure, clarity, and repository organisation. Generated code is not displayed by this CLI.",
     ),
@@ -113,7 +297,7 @@ MANUAL_METRICS: tuple[MetricDefinition, ...] = (
         metric_id="test_coverage.test_coverage",
         category="Test Coverage",
         title="Test Coverage",
-        max_score=5,
+        max_score=10,
         unit="score",
         guidance="Did the output include a useful testing strategy or tests for expected behaviours?",
     ),
@@ -199,6 +383,9 @@ class EvaluationAnalyser:
         comparison = self.format_comparison(project, result)
         if comparison:
             self.output(comparison)
+
+        automated_metrics = compute_basic_metrics(project, result)
+        self.output(self.format_automated_metrics(automated_metrics))
 
         manual_metrics = self.collect_manual_metrics(input_func=input_func)
         evaluation = self.build_evaluation_summary(
@@ -315,6 +502,33 @@ class EvaluationAnalyser:
             "automated_metrics": automated_metrics,
             "manual_metrics": manual_metrics,
         }
+
+    def format_automated_metrics(self, metrics: dict[str, Any]) -> str:
+        metric_order = (
+            "requirement_recall",
+            "requirement_precision",
+            "constraint_capture_rate",
+            "component_recall",
+            "component_precision",
+            "module_recall",
+            "module_precision",
+            "dependency_recall",
+            "repository_structure_accuracy",
+            "build_success_rate",
+            "test_pass_rate",
+            "test_coverage_score",
+            "completion_rate",
+            "iteration_count",
+            "tool_call_success_rate",
+            "execution_failure_count",
+            "repair_attempts",
+        )
+        lines = ["", "Automated Metrics", "-----------------"]
+        for key in metric_order:
+            if key not in metrics:
+                continue
+            lines.append(f"{_humanise_metric_key(key)}: {_format_metric_value(metrics[key], key)}")
+        return "\n".join(lines)
 
     def save_evaluation(self, output_path: str | Path, evaluation: dict[str, Any]) -> Path:
         output_path = Path(output_path).expanduser().resolve()
@@ -603,6 +817,20 @@ def _shorten_line(value: str, width: int) -> str:
 
 def _format_number(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else str(value)
+
+
+def _humanise_metric_key(key: str) -> str:
+    return key.replace("_", " ").title()
+
+
+def _format_metric_value(value: Any, key: str) -> str:
+    if isinstance(value, float):
+        rendered = _format_number(value)
+    else:
+        rendered = str(value)
+    if key.endswith("_rate") or key.endswith("_recall") or key.endswith("_precision") or key.endswith("_accuracy") or key == "test_coverage_score":
+        return f"{rendered}%"
+    return rendered
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
