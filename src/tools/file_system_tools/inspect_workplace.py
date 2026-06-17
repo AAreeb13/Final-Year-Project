@@ -4,21 +4,21 @@ from pathlib import Path
 from typing import Iterable
 
 from langchain_core.tools import tool
-from tools.tool_schemas import InspectFolderStructureSchema
+from src.tools.tool_schemas import InspectFolderStructureSchema
 
 from src.settings import settings
 
 
 DEFAULT_IGNORED_NAMES = {
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    "__pycache__",
-    "dist",
-    "build",
-    "node_modules",
+    # ".git",
+    # ".mypy_cache",
+    # ".pytest_cache",
+    # ".ruff_cache",
+    # ".venv",
+    # "__pycache__",
+    # "dist",
+    # "build",
+    # "node_modules",
 }
 
 
@@ -115,10 +115,10 @@ def inspect_folder_structure(
     bounded_max_entries = max(1, min(max_entries, 1000))
 
     if target_path.is_file():
-        return {"tree": str(target_path.relative_to(Path(settings.WORKPLACE_FOLDER).resolve())), "total_entries": 1, "truncated": False}
-
+        return {"tree": target_path.name, "total_entries": 1, "truncated": False}
     #check if the directory is empty after ignoring
     if all(child.name in ignored_names for child in target_path.iterdir()):
+        print("(empty)")
         return {"tree": "(empty)", "total_entries": 0, "truncated": False}
     
 
@@ -128,10 +128,9 @@ def inspect_folder_structure(
         bounded_max_depth,
         bounded_max_entries,
     )
-
     if truncated:
         lines.append(f"... truncated after {bounded_max_entries} entries")
-
+    print("\n".join(lines))
     return {"tree": "\n".join(lines), "total_entries": len(lines) - 1, "truncated": truncated}
 
 

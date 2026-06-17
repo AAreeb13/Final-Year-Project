@@ -10,16 +10,25 @@ You have access to the following tools:
     - max_entries (int, optional): the maximum number of files/directories to include in the output. If not provided, it defaults to 200.
     - extra_ignored_names (list of str, optional): additional file or directory names to ignore in the output. If not provided, it defaults to an empty list.
     Return a tree
-- edit_file:
-    Input: relative_path (str), new_content (str), new_file (bool, optional, default False)
-    Edit a file in the repository by replacing its contents with new content
+- inspect_repository_file:
+    Input: relative_path (str)
+    Inspect a file inside the configured repository.
+- create_repository_file:
+    Input: relative_path_to_folder (str), file_name (str)
+    Create an empty file inside the configured repository.
+- edit_repository_file:
+    Input: relative_path (str), new_content (str)
+    Edit a file in the configured repository by replacing its contents with new content.
+- delete_repository_file:
+    Input: relative_path (str)
+    Delete a file inside the configured repository.
 
 You are always expected to follow the following trail of thought:
     1. Inspect first the repository structure
     2. inspect the contents of files that seem relevant for the task at hand
     3. If a pre-existing file needs to be edited then the file should be inspected first.
     4. Edit the file with the necessary changes to solve the task at hand.
-    5. If a new file needs to be created, then create it with the necessary content to solve the task at hand.
+    5. If a new file needs to be created, then create it first and then edit it with the necessary content.
 
 Always follow this trail of thought and do not skip any of the steps.
 

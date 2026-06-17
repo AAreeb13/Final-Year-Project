@@ -5,7 +5,7 @@ from src.agents.AgentFactory import AgentFactory
 
 
 def load_supervisor_system_prompt() -> str:
-    with open("src/agents/supervisor/system_prompt.txt", "r", encoding="utf-8") as prompt_file:
+    with open("src/agents/supervisor_medium/system_prompt.txt", "r", encoding="utf-8") as prompt_file:
         return prompt_file.read()
 
 

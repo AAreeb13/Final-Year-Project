@@ -36,6 +36,7 @@ class EvaluationHarness:
         human_approval: bool = True,
         system_id: int | str | None = None,
         debug_structured_output: bool = False,
+        verbose: bool = False,
     ):
         print(f"========= Running system {system_id} for datapoint {datapoint_id}.")
 
@@ -46,28 +47,52 @@ class EvaluationHarness:
             "human_approval": human_approval,
             "allow_tool_execution": False,
             "debug_structured_output": debug_structured_output,
+            "verbose": verbose,
+            "project_id": datapoint.get("project_id") or datapoint_id,
+            "datapoint_id": datapoint_id,
         }
 
         system = self._get_system(system_id)
 
-        result, run_id = system.run(
-            prompt=problem_statement,
-            run_config=run_config,
+        self._reset_system_runtime(
+            system,
+            reason=f"before datapoint {datapoint_id}",
+            verbose=verbose,
         )
 
         try:
-            self.save_run_artifact(
-                result=result,
-                run_id=run_id,
-                datapoint_id=datapoint_id,
-                system_id=system.system_id,
+            result, run_id = system.run(
+                prompt=problem_statement,
+                run_config=run_config,
             )
-        except Exception as e:
-            print(
-                f"Error saving result for datapoint {datapoint_id} "
-                f"with run_id {run_id}: {e}"
-            )
+
+            try:
+                output_path = self.save_run_artifact(
+                    result=result,
+                    run_id=run_id,
+                    datapoint_id=datapoint_id,
+                    system_id=system.system_id,
+                )
+                after_run_saved = getattr(system, "after_run_saved", None)
+                if callable(after_run_saved):
+                    after_run_saved(
+                        artifact_dir=output_path.parent,
+                        output_path=output_path,
+                        datapoint_id=datapoint_id,
+                        run_id=run_id,
+                        run_config=run_config,
+                    )
+            except Exception as e:
+                print(
+                    f"Error saving result for datapoint {datapoint_id} "
+                    f"with run_id {run_id}: {e}"
+                )
         finally:
+            self._reset_system_runtime(
+                system,
+                reason=f"after datapoint {datapoint_id}",
+                verbose=verbose,
+            )
             print(f"===== Completed running datapoint {datapoint_id} with all systems. =====")
 
 
@@ -76,6 +101,7 @@ class EvaluationHarness:
         datapoint_id: str,
         human_approval: bool = True,
         debug_structured_output: bool = False,
+        verbose: bool = False,
     ):
         print()
         print(f"===== Running datapoint {datapoint_id} with registered systems. =====")
@@ -86,6 +112,7 @@ class EvaluationHarness:
                 human_approval=human_approval,
                 system_id=system_index,
                 debug_structured_output=debug_structured_output,
+                verbose=verbose,
             )
 
 
@@ -93,6 +120,7 @@ class EvaluationHarness:
         self,
         human_approval: bool = True,
         debug_structured_output: bool = False,
+        verbose: bool = False,
     ):
         datapoint_ids = self.data_loader.list_datapoints(id_only=True)
 
@@ -101,6 +129,7 @@ class EvaluationHarness:
                 datapoint_id,
                 human_approval=human_approval,
                 debug_structured_output=debug_structured_output,
+                verbose=verbose,
             )
 
     def run_all_datapoints_with_system(
@@ -108,6 +137,7 @@ class EvaluationHarness:
         system_id: int | str = 0,
         human_approval: bool = True,
         debug_structured_output: bool = False,
+        verbose: bool = False,
     ):
         print("Running all datapoints with system:", system_id)
         datapoint_ids = self.data_loader.list_datapoints(id_only=True)
@@ -118,6 +148,7 @@ class EvaluationHarness:
                 human_approval=human_approval,
                 system_id=system_id,
                 debug_structured_output=debug_structured_output,
+                verbose=verbose,
             )
 
     def save_run_artifact(
@@ -178,6 +209,21 @@ class EvaluationHarness:
             return
 
         self.systems.append(system)
+
+    @staticmethod
+    def _reset_system_runtime(
+        system: AgentSystemRunner,
+        *,
+        reason: str,
+        verbose: bool,
+    ) -> None:
+        try:
+            system.reset_system(reason=reason, verbose=verbose)
+        except Exception as error:
+            print(
+                f"Warning: could not reset system {system.system_id} "
+                f"{reason}: {type(error).__name__}: {error}"
+            )
 
     def _get_system(self, system_id: int | str | None) -> AgentSystemRunner:
         if not self.systems:
@@ -278,10 +324,12 @@ if __name__ == "__main__":
         data_loader=data_loader,
         output_dir=evaluation_directory,
     )
-    from src.evaluation.runners import SingleAgentSystemRunner as SASrunner
-    system1 = SASrunner(description="Single agent system using the master prompt")
+    from src.evaluation.runners import MultiAgentSystemRunner, SingleAgentSystemRunner
+    system1 = SingleAgentSystemRunner(description="Single agent system using the master prompt")
+    system2 = MultiAgentSystemRunner(description="Full multi-agent SDLC system")
 
     harness._register_system(system1)
+    harness._register_system(system2)
     print("Available datapoints:")
     datapoints = data_loader.list_datapoints()
 
@@ -290,7 +338,6 @@ if __name__ == "__main__":
 
     print()
     print("EvaluationHarness setup completed.")
-    print("No systems have been registered yet, so no evaluation run was started.")
 
     for system in harness.systems:
         system.display_architecture()

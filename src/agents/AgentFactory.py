@@ -16,7 +16,7 @@ class AgentFactory:
         prompt: str,
         tools: list,
         temperature: float = 0.7,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini",
         middleware: Sequence[AgentMiddleware] | None = None,
         checkpointer: BaseCheckpointSaver | None = None,
         response_format=None,
@@ -46,7 +46,7 @@ class AgentFactory:
         prompt: str,
         tools: list,
         temperature: float = 0.7,
-        model_name: str = "gpt-4o-mini",
+        model_name: str = "gpt-5.4-mini",
         response_format=None,
     ):
         middleware = [

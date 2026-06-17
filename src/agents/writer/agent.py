@@ -1,9 +1,12 @@
 import uuid
 
-from src.tools.file_system_tools.manage_file import delete_file, edit_file, create_file
-from src.tools.file_system_tools.inspect_file import inspect_file
-from src.tools.file_system_tools.inspect_workplace import inspect_folder_structure
-from src.tools.file_system_tools.manage_folders import create_folder, delete_folder
+from src.tools.file_system_tools.inspect_repository import (
+    create_repository_file,
+    delete_repository_file,
+    edit_repository_file,
+    inspect_repository,
+    inspect_repository_file,
+)
 
 from src.agents.AgentFactory import AgentFactory
 from src.agents.human_approval_runner import run_with_human_approval
@@ -11,13 +14,11 @@ from src.agents.human_approval_runner import run_with_human_approval
 def build_writer_agent():
     prompt = load_writer_system_prompt()
     tools = [
-        inspect_folder_structure,
-        inspect_file,
-        create_file,
-        edit_file,
-        delete_file,
-        create_folder,
-        delete_folder,
+        inspect_repository,
+        inspect_repository_file,
+        create_repository_file,
+        edit_repository_file,
+        delete_repository_file,
     ]
     return AgentFactory.build_agent_with_HITLmiddleware_InMemCheckpointer(
         prompt=prompt,

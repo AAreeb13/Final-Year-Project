@@ -269,7 +269,22 @@ class AgentSystemMediumGraph:
             else None,
             "repair_attempts": state.get("repair_attempts", 0),
         }
-        raw_state = self.supervisor_runner(agent, self._build_supervisor_prompt(step_input), self.supervisor_config)
+        try:
+            raw_state = self.supervisor_runner(agent, self._build_supervisor_prompt(step_input), self.supervisor_config)
+        except Exception as error:
+            message = _runner_error_message("supervisor", error)
+            output = SupervisorOutput(project_summary=message)
+            approval = ApprovalDecision(approved=False, message=message)
+            trace = self._append_trace(state, "supervisor", "plan_error", step_input, output.model_dump(), approval)
+            next_state: MediumAgentState = {
+                **state,
+                "current_agent": "supervisor",
+                "supervisor_output": state.get("supervisor_output") or output,
+                "trace": trace,
+                "route_after_approval": "supervisor",
+                "last_executor_output": message,
+            }
+            return self._increment_revision(next_state, "supervisor")
         output = self._extract_supervisor_output(raw_state)
         approval = self.approval_callback("supervisor", step_input, output.model_dump())
         trace = self._append_trace(state, "supervisor", "plan", step_input, output.model_dump(), approval)
@@ -313,23 +328,34 @@ class AgentSystemMediumGraph:
             previous_executor_output=state.get("last_executor_output"),
         )
 
-        raw_state = self.writer_runner(
-            self._get_writer_agent(),
-            self._build_writer_prompt(writer_input),
-            self.writer_config,
-        )
-        writer_output = WriterOutput(
-            task_id=file_task.task_id,
-            relative_path=file_task.relative_path,
-            status="done_untested",
-            summary=_extract_agent_text(raw_state) or "Writer step completed.",
-            raw_agent_state=raw_state,
-        )
-        approval = self.approval_callback(
-            "writer",
-            writer_input.model_dump(),
-            writer_output.model_dump(),
-        )
+        try:
+            raw_state = self.writer_runner(
+                self._get_writer_agent(),
+                self._build_writer_prompt(writer_input),
+                self.writer_config,
+            )
+            writer_output = WriterOutput(
+                task_id=file_task.task_id,
+                relative_path=file_task.relative_path,
+                status="done_untested",
+                summary=_extract_agent_text(raw_state) or "Writer step completed.",
+                raw_agent_state=raw_state,
+            )
+            approval = self.approval_callback(
+                "writer",
+                writer_input.model_dump(),
+                writer_output.model_dump(),
+            )
+        except Exception as error:
+            message = _runner_error_message("writer", error)
+            writer_output = WriterOutput(
+                task_id=file_task.task_id,
+                relative_path=file_task.relative_path,
+                status="failed",
+                summary=message,
+                raw_agent_state={"error": message, "exception_type": type(error).__name__},
+            )
+            approval = ApprovalDecision(approved=False, message=message)
         trace = self._append_trace(
             state,
             "writer",
@@ -358,6 +384,15 @@ class AgentSystemMediumGraph:
             next_state["current_file_task_index"] = next_pending_index if next_pending_index is not None else task_index + 1
             next_state["executor_output"] = None
         else:
+            next_state["writer_outputs"] = [*state.get("writer_outputs", []), writer_output]
+            next_state["task_store"] = self._update_task_status(task_store, file_task.task_id, "failed")
+            next_state["last_executor_output"] = writer_output.summary
+            next_state["progress_update"] = AgentProgressUpdate(
+                stage="coding",
+                status="not complete",
+                files_written_or_commands_executed=[writer_output.summary],
+            )
+            next_state["current_file_task_index"] = task_index
             next_state = self._increment_revision(next_state, "writer")
         return next_state
 
@@ -374,13 +409,32 @@ class AgentSystemMediumGraph:
             "supervisor_output": supervisor_output.model_dump(),
             "last_executor_output": state.get("last_executor_output"),
         }
-        raw_state = self.executor_runner(
-            self._get_executor_agent(),
-            self._build_executor_prompt(step_input),
-            self.executor_config,
-        )
-        executor_output = self._extract_executor_output(raw_state)
-        approval = self.approval_callback("executor", step_input, executor_output.model_dump())
+        try:
+            raw_state = self.executor_runner(
+                self._get_executor_agent(),
+                self._build_executor_prompt(step_input),
+                self.executor_config,
+            )
+            executor_output = self._extract_executor_output(raw_state)
+            approval = self.approval_callback("executor", step_input, executor_output.model_dump())
+        except Exception as error:
+            message = _runner_error_message("executor", error)
+            executor_output = ExecutorOutput(
+                status="error",
+                command_results=[
+                    ExecutorCommandResult(
+                        command_phase="test",
+                        command=[],
+                        status="error",
+                        exit_code=None,
+                        stderr=message,
+                        message=message,
+                    )
+                ],
+                summary=message,
+                raw_agent_state={"error": message, "exception_type": type(error).__name__},
+            )
+            approval = ApprovalDecision(approved=True, message="Runner error relayed to repair loop.")
         trace = self._append_trace(
             state,
             "executor",
@@ -562,7 +616,8 @@ class AgentSystemMediumGraph:
     def _build_executor_prompt(step_input: dict[str, Any]) -> str:
         return (
             "You are the Executor Agent. Use the approved supervisor plan to understand dependencies, setup commands, "
-            "test framework, and execution commands. Start or reuse a persistent container, run setup commands first, "
+            "test framework, and execution commands. Repository command tools already run inside the configured project repository. "
+            "Start or reuse a persistent container, run setup commands first, "
             "then run test/execution commands. Do not edit files. "
             "Report which commands were executed and whether execution is complete or not complete.\n\n"
             f"Structured input:\n{json.dumps(step_input, indent=2, default=str)}"
@@ -755,6 +810,10 @@ class ExecutorWriterGraph(AgentSystemMediumGraph):
             user_prompt=f"{user_task}\n\nTesting framework: {testing_framework}",
             max_repair_attempts=max_attempts,
         )
+
+
+def _runner_error_message(agent_name: str, error: Exception) -> str:
+    return f"{agent_name} runner failed with {type(error).__name__}: {error}"
 
 
 def _extract_agent_text(raw_state: dict[str, Any]) -> str | None:
