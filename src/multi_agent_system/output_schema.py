@@ -262,6 +262,197 @@ class EnvironmentSetupExecution(BaseModel):
     summary: str = ""
 
 
+class PlanningGraphInput(BaseModel):
+    project_prompt: str
+    requirements: RequirementsSpec
+    component_extraction: ComponentExtractionOutput
+    component_decompositions: dict[str, ComponentDecompositionOutput] = Field(default_factory=dict)
+    module_designs: dict[str, ModuleDesignOutput] = Field(default_factory=dict)
+    repository_structure: RepositoryStructure | None = None
+    environment_setup: EnvironmentSetupPlan | None = None
+
+
+class ImplementationFilePlan(BaseModel):
+    file_id: str
+    relative_path: str
+    component_name: str
+    modules: list[str] = Field(default_factory=list)
+    purpose: str
+    unit_tests: list[str] = Field(default_factory=list)
+
+
+class ImplementationPlanStep(BaseModel):
+    step_id: str
+    action: str
+    target_file_id: str | None = None
+    target_modules: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
+    description: str = ""
+
+
+class ImplementationPlan(BaseModel):
+    files: list[ImplementationFilePlan] = Field(default_factory=list)
+    steps: list[ImplementationPlanStep] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_plan_references(self):
+        file_ids = [file.file_id for file in self.files]
+        file_id_set = set(file_ids)
+        if len(file_ids) != len(file_id_set):
+            raise ValueError("Implementation file ids must be unique")
+
+        step_ids = [step.step_id for step in self.steps]
+        step_id_set = set(step_ids)
+        if len(step_ids) != len(step_id_set):
+            raise ValueError("Implementation step ids must be unique")
+
+        for step in self.steps:
+            if step.target_file_id and step.target_file_id not in file_id_set:
+                raise ValueError(f"Implementation step {step.step_id} targets unknown file_id")
+            missing_dependencies = [
+                dependency_id
+                for dependency_id in step.depends_on
+                if dependency_id not in step_id_set
+            ]
+            if missing_dependencies:
+                raise ValueError(
+                    f"Implementation step {step.step_id} depends on unknown steps: {missing_dependencies}"
+                )
+        return self
+
+
+class TestCaseSpec(BaseModel):
+    name: str = ""
+    target_signature: str | None = None
+    input_summary: str = ""
+    expected_output_summary: str = ""
+    assertion_summary: str = ""
+
+
+TestPlanNodeKind = Literal[
+    "unit",
+    "module_integration",
+    "component_integration",
+    "system_integration",
+]
+
+
+class TestPlanNode(BaseModel):
+    node_id: str
+    kind: TestPlanNodeKind
+    title: str
+    target_modules: list[str] = Field(default_factory=list)
+    target_signatures: list[str] = Field(default_factory=list)
+    test_cases: list[TestCaseSpec] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
+
+    @field_validator("test_cases", mode="before")
+    @classmethod
+    def normalize_test_cases(cls, value: Any) -> Any:
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list):
+            return value
+        normalized = []
+        for item in value:
+            if isinstance(item, str):
+                normalized.append(
+                    {
+                        "name": item,
+                        "input_summary": "Use representative valid and invalid inputs for this case.",
+                        "expected_output_summary": item,
+                        "assertion_summary": item,
+                    }
+                )
+                continue
+            normalized.append(item)
+        return normalized
+
+
+class TestPlanEdge(BaseModel):
+    source: str
+    target: str
+    relationship_type: str = "depends_on"
+
+
+class TestPlanGraph(BaseModel):
+    testing_framework: str = ""
+    nodes: list[TestPlanNode] = Field(default_factory=list)
+    edges: list[TestPlanEdge] = Field(default_factory=list)
+    root_node_id: str = ""
+    commands: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_graph_references(self):
+        node_ids = [node.node_id for node in self.nodes]
+        node_id_set = set(node_ids)
+        if len(node_ids) != len(node_id_set):
+            raise ValueError("Test plan node ids must be unique")
+        if self.root_node_id and self.root_node_id not in node_id_set:
+            raise ValueError("root_node_id must reference an existing test plan node")
+        for node in self.nodes:
+            missing_dependencies = [
+                dependency_id
+                for dependency_id in node.depends_on
+                if dependency_id not in node_id_set
+            ]
+            if missing_dependencies:
+                raise ValueError(
+                    f"Test plan node {node.node_id} depends on unknown nodes: {missing_dependencies}"
+                )
+        for edge in self.edges:
+            if edge.source not in node_id_set or edge.target not in node_id_set:
+                raise ValueError("Test plan edges must reference existing node ids")
+        return self
+
+
+class PlanningStageOutput(BaseModel):
+    implementation_plan: ImplementationPlan = Field(default_factory=ImplementationPlan)
+    test_plan: TestPlanGraph = Field(default_factory=TestPlanGraph)
+    critic_verdict: str = ""
+    validation_errors: list[str] = Field(default_factory=list)
+    approved: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
+class FileWriteResult(BaseModel):
+    relative_path: str = ""
+    status: str = "unknown"
+    message: str = ""
+    summary: str = ""
+
+
+class TestExecutionResult(BaseModel):
+    command: list[str] = Field(default_factory=list)
+    status: str = "unknown"
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    message: str = ""
+    summary: str = ""
+
+
+class ImplementationExecutionResult(BaseModel):
+    file_writes: list[FileWriteResult] = Field(default_factory=list)
+    test_executions: list[TestExecutionResult] = Field(default_factory=list)
+    status: str = "not_started"
+    summary: str = ""
+
+
+class ImplementationStageOutput(BaseModel):
+    execution: ImplementationExecutionResult = Field(default_factory=ImplementationExecutionResult)
+    approved: bool = False
+    failure_reason: str = ""
+    notes: list[str] = Field(default_factory=list)
+
+
+TestCaseSpec.__test__ = False
+TestPlanNode.__test__ = False
+TestPlanEdge.__test__ = False
+TestPlanGraph.__test__ = False
+
+
 PlanningTaskKind = Literal[
     "create_file",
     "create_test_file",
@@ -439,4 +630,6 @@ class ProjectStore(BaseModel):
     repository_structure: RepositoryStructure | None = None
     environment_setup: EnvironmentSetupPlan | None = None
     environment_setup_execution: EnvironmentSetupExecution | None = None
+    planning: PlanningStageOutput | None = None
+    implementation: ImplementationStageOutput | None = None
     stage_statuses: dict[str, str] = Field(default_factory=dict)
