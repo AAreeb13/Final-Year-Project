@@ -202,10 +202,10 @@ def test_side_by_side_rendering_handles_missing_sides():
 
 def test_prompt_score_validates_general_and_percent_metrics(tmp_path: Path):
     analyser, _, _ = create_analyser(tmp_path)
-    general_metric = MANUAL_METRICS[1]
+    general_metric = next(metric for metric in MANUAL_METRICS if metric.unit == "score")
     percent_metric = MANUAL_METRICS[0]
 
-    general_inputs = iter(["6", "4.5"])
+    general_inputs = iter(["11", "9.5"])
     percent_inputs = iter(["101", "75"])
 
     assert (
@@ -213,7 +213,7 @@ def test_prompt_score_validates_general_and_percent_metrics(tmp_path: Path):
             general_metric,
             input_func=lambda _prompt: next(general_inputs),
         )
-        == 4.5
+        == 9.5
     )
     assert (
         analyser.prompt_score(
@@ -222,6 +222,40 @@ def test_prompt_score_validates_general_and_percent_metrics(tmp_path: Path):
         )
         == 75
     )
+
+
+def test_manual_metrics_include_quantitative_metric_prompts():
+    metric_ids = {metric.metric_id for metric in MANUAL_METRICS}
+
+    assert {
+        "requirement_extraction.requirements_precision",
+        "requirement_extraction.constraint_capture_rate",
+        "architecture.component_recall",
+        "architecture.component_precision",
+        "architecture.module_recall",
+        "architecture.module_precision",
+        "architecture.dependency_recall",
+        "architecture.requirement_to_component_coverage",
+        "repository.repository_structure_accuracy",
+        "repository.repository_standard",
+        "execution.build_success_rate",
+        "execution.test_pass_rate",
+        "test_coverage.test_coverage_score",
+        "system_efficiency.completion_rate",
+        "system_efficiency.iteration_count",
+        "system_efficiency.tool_call_count",
+        "system_efficiency.execution_failure_count",
+        "system_efficiency.repair_success_rate",
+        "system_efficiency.trace_consistency",
+        "software_design.solid_violations",
+    }.issubset(metric_ids)
+
+
+def test_manual_score_metrics_are_out_of_ten():
+    score_metrics = [metric for metric in MANUAL_METRICS if metric.unit == "score"]
+
+    assert score_metrics
+    assert all(metric.max_score == 10 for metric in score_metrics)
 
 
 def test_next_evaluation_path_versions_existing_files(tmp_path: Path):
@@ -258,8 +292,27 @@ def test_build_and_save_evaluation_includes_automated_metrics(tmp_path: Path):
     assert saved["metadata"]["datapoint_id"] == "snake_game"
     assert saved["automated_metrics"]["total_requirements"] == 3
     assert saved["automated_metrics"]["implemented_requirements"] == 2
+    assert saved["automated_metrics"]["requirement_recall"] == 66.67
+    assert saved["automated_metrics"]["test_pass_rate"] == 0
     assert saved["automated_metrics"]["tool_call_success_rate"] == 100
     assert saved["manual_metrics"] == manual_metrics
+
+
+def test_format_automated_metrics_shows_thesis_metric_summary(tmp_path: Path):
+    analyser, _, output_path = create_analyser(tmp_path)
+    project, result = analyser.load_comparison_inputs(output_path)
+    metrics = analyser.build_evaluation_summary(
+        output_path=output_path,
+        project=project,
+        result=result,
+        manual_metrics={},
+    )["automated_metrics"]
+
+    rendered = analyser.format_automated_metrics(metrics)
+
+    assert "Automated Metrics" in rendered
+    assert "Requirement Recall: 66.67%" in rendered
+    assert "Repository Structure Accuracy: 100%" in rendered
 
 
 def test_data_loader_retrieve_full_datapoint_uses_loader_dataset_path(tmp_path: Path):

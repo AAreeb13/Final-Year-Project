@@ -71,6 +71,15 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--model",
+        default="gpt-5.4-mini",
+        help=(
+            "OpenRouter/OpenAI-compatible model ID to use for this run, "
+            "for example openai/gpt-5.3-codex."
+        ),
+    )
+
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="Allow the agent to execute generated Python validation code.",
@@ -102,7 +111,12 @@ def configure_langsmith(settings) -> None:
             os.environ[env_var] = value
 
 
-def build_agent(settings, prompt_name: str, allow_tool_execution: bool = False):
+def build_agent(
+    settings,
+    prompt_name: str,
+    model_name: str = "gpt-5.4-mini",
+    allow_tool_execution: bool = False,
+):
     assert settings.OPEN_ROUTER_KEY is not None, (
         "OPEN_ROUTER_KEY must be set in the .env file"
     )
@@ -111,7 +125,7 @@ def build_agent(settings, prompt_name: str, allow_tool_execution: bool = False):
     model = ChatOpenAI(
         api_key=SecretStr(settings.OPEN_ROUTER_KEY),
         base_url="https://openrouter.ai/api/v1",
-        model="gpt-4o-mini",
+        model=model_name,
         temperature=0.1,
         # max_completion_tokens=100000,
 )
@@ -166,6 +180,7 @@ def execute(
     problem_statement: str,
     prompt_name: str = "master",
     project_id: str | None = None,
+    model_name: str = "gpt-5.4-mini",
     allow_tool_execution: bool = False,
     debug_structured_output: bool = False,
 ) -> tuple[SystemRunOutput, str]:
@@ -174,17 +189,19 @@ def execute(
     agent = build_agent(
         settings,
         prompt_name,
+        model_name=model_name,
         allow_tool_execution=allow_tool_execution,
     )
 
-    trace_tags = ["single_agent", f"prompt:{prompt_name}"]
+    trace_tags = ["single_agent", f"prompt:{prompt_name}", f"model:{model_name}"]
     trace_metadata = {
         "system_name": "single_agent",
         "prompt_name": prompt_name,
+        "model_name": model_name,
     }
     if project_id is not None:
         trace_metadata["project_id"] = project_id
-    thread_id = f"single-agent-{project_id or uuid.uuid4()}"
+    thread_id = f"single-agent-{project_id or uuid.uuid4()}-{int(time.time())}"
     run_config = {
         "run_name": "single_agent_system",
         "tags": trace_tags,
@@ -325,6 +342,7 @@ def run(
     problem_statement: str,
     prompt_name: str = "master",
     project_id: str | None = None,
+    model_name: str = "gpt-5.4-mini",
     allow_tool_execution: bool = False,
     debug_structured_output: bool = False,
 ) -> SystemRunOutput:
@@ -332,6 +350,7 @@ def run(
         problem_statement=problem_statement,
         prompt_name=prompt_name,
         project_id=project_id,
+        model_name=model_name,
         allow_tool_execution=allow_tool_execution,
         debug_structured_output=debug_structured_output,
     )
@@ -352,6 +371,7 @@ if __name__ == "__main__":
             problem_statement=args.problem_statement,
             prompt_name=args.prompt,
             project_id=args.project_id,
+            model_name=args.model,
             allow_tool_execution=args.execute,
             debug_structured_output=args.debug_structured_output,
         )
@@ -361,6 +381,7 @@ if __name__ == "__main__":
             problem_statement=problem_statement,
             prompt_name="system_design",
             project_id=None,
+            model_name="gpt-5.4-mini",
             allow_tool_execution=False,
             debug_structured_output=True,
         )

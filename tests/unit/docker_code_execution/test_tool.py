@@ -112,3 +112,19 @@ def test_stop_container_when_no_container_is_running(docker_client):
     except Exception as e:
         pytest.fail(f"stop_container raised an exception when no container was running: {e}")
 
+def test_run_in_container_with_a_folder_in_workplace(docker_client, temp_workplace):
+    # Create a folder and a file inside it
+    folder = temp_workplace / "test_folder"
+    folder.mkdir()
+    (folder / "test_file.txt").write_text("This is a test file.")
+
+    output = invoke_container(
+        [
+            "python",
+            "-c",
+            "from pathlib import Path; print(Path('test_folder/test_file.txt').read_text())",
+        ]
+    )
+
+    assert output["status"] == "success"
+    assert output["stdout"] == "This is a test file.\n"
