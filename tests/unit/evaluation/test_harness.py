@@ -25,8 +25,11 @@ class MockDataLoader(DataLoader):
 class MockSystem(AgentSystemRunner):
     def __init__(self, system_id):
         self.system_id = system_id
-    def run(self, problem_statement, run_config):
-        return {"result": f"Result from system {self.system_id} for prompt: {problem_statement}"}, f"run_{self.system_id}"
+        self.reset_reasons = []
+    def run(self, prompt, run_config):
+        return {"result": f"Result from system {self.system_id} for prompt: {prompt}"}, f"run_{self.system_id}"
+    def reset_system(self, *, reason="", verbose=False):
+        self.reset_reasons.append((reason, verbose))
     def display_architecture(self):
         print(f"Architecture for system <{self.system_id}>")
 
@@ -74,3 +77,22 @@ def test_save_run_artifact_creates_eval_directory(tmp_path):
 
     saved = output_path.read_text(encoding="utf-8")
     assert "hello" in saved
+
+
+def test_harness_resets_system_before_and_after_run(tmp_path):
+    data_loader = MockDataLoader(tmp_path)
+    harness = EvaluationHarness(data_loader, tmp_path / "evaluation_results")
+    system = MockSystem("mock_system_1")
+    harness._register_system(system)
+
+    harness.run_datapoint_with_system(
+        "datapoint1",
+        human_approval=False,
+        system_id="mock_system_1",
+        verbose=True,
+    )
+
+    assert system.reset_reasons == [
+        ("before datapoint datapoint1", True),
+        ("after datapoint datapoint1", True),
+    ]

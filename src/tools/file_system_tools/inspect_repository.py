@@ -14,22 +14,28 @@ from src.settings import settings
 from langchain_core.tools import tool
 
 
-def _resolve_file_inside_workspace_repository(relative_path: str = None) -> Path:
+def _resolve_file_inside_workspace_repository(relative_path: str = None, must_exist: bool = True) -> Path:
     workspace_root = Path(settings.WORKPLACE_FOLDER).expanduser().resolve()
     repository_name = settings.REPO_NAME
     if repository_name is None:
         raise ValueError("Repository name is not configured.")
-    file_path = (workspace_root / repository_name ).expanduser().resolve()
+    repository_path = (workspace_root / repository_name).expanduser().resolve()
+    if repository_path != workspace_root and workspace_root not in repository_path.parents:
+        raise ValueError("Repository path must stay inside the configured workplace folder.")
+    if not repository_path.exists():
+        raise ValueError("Repository folder does not exist.")
+    if not repository_path.is_dir():
+        raise ValueError("Repository path is not a directory.")
+    if not (repository_path / ".git").exists():
+        raise ValueError("Repository folder is not a valid Git repository.")
+
+    file_path = repository_path
     if relative_path:
         file_path = (file_path / relative_path).expanduser().resolve()
-    if file_path != workspace_root and workspace_root not in file_path.parents:
-        raise ValueError("Path must stay inside the configured workplace folder.")
-    # print(f"Resolved file path: {file_path}")
-    # is git repository
-    if file_path.is_dir() and not (file_path / ".git").exists():
-        raise ValueError("Repository folder is not a valid Git repository.")
+    if file_path != repository_path and repository_path not in file_path.parents:
+        raise ValueError("Path must stay inside the configured repository folder.")
     
-    if not file_path.exists():
+    if must_exist and not file_path.exists():
         raise ValueError("File or directory does not exist.")
     
     # if file then check if it's inside the repository
@@ -67,7 +73,7 @@ def inspect_repository_file(relative_path: str) -> str:
 @tool(args_schema=CreateFileSchema)
 def create_repository_file(relative_path_to_folder: str, file_name: str) -> str:
     try:
-        folder_path = _resolve_file_inside_workspace_repository(relative_path_to_folder)
+        folder_path = _resolve_file_inside_workspace_repository(relative_path_to_folder, must_exist=False)
         print(f"Resolved folder path: {folder_path}")
     except ValueError as error:
         return {
